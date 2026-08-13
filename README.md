@@ -13,6 +13,7 @@ The same pipeline runs automatically at 7:00 AM Monday through Friday and from t
 - Excel COM printing from an isolated `EXCEL.EXE` instance with Tabloid size and configured orientation forced immediately before printing.
 - Atomic state tracking that prevents an email from being printed twice.
 - A tray menu with Run Now, Open Reports, Open Settings, Open Logs, and Exit.
+- A visible control window for Gmail filters, schedule, printer selection, Run Now, status, reports, logs, and extraction rules.
 - A weekday scheduler that runs inside the tray process.
 - Frozen-executable-safe paths with a `%APPDATA%\SOPReporter` fallback when the executable folder is not writable.
 
@@ -22,7 +23,7 @@ The same pipeline runs automatically at 7:00 AM Monday through Friday and from t
 2. Start it once while signed into the Windows account that will run it.
 3. Enter the Gmail address and its 16-character Gmail app password when prompted.
 4. Right-click the tray icon and choose **Open Settings**.
-5. Edit `app_config.yaml` to set the email sender/subject filters and printer name.
+5. Use the control window to set the email sender/subject filters and printer name. Leave sender and subject blank for the first test.
 6. Review `extraction_rules.yaml`. Its defaults match the supplied Salesforce screenshot; update the sheet/header details after a real source workbook is available.
 7. Use **Run Now** with **Microsoft Print to PDF** first.
 
@@ -40,6 +41,8 @@ Bundled files ending in `.default.yaml` are immutable templates. On first start,
 - `config/extraction_rules.yaml`
 
 Edit the files without `.default` in their names. Restart SOP Reporter after a configuration change.
+
+The control window edits the most common settings. Advanced configuration remains available through **Open Rule File** and the YAML files.
 
 `app_config.yaml` controls Gmail matching, schedule, output folders, printer, and logging. `extraction_rules.yaml` controls the workbook sheet/header, source-to-output columns, filters, report splitting, grouping, aggregations, sorting, formats, widths, and report styling.
 
