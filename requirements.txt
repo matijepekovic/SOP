@@ -1,0 +1,9 @@
+openpyxl>=3.1
+PyYAML>=6.0
+keyring>=25.0
+Pillow>=10.0
+psutil>=5.9
+pystray>=0.19
+pywin32>=306; sys_platform == "win32"
+schedule>=1.2
+
