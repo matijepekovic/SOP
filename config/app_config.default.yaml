@@ -1,0 +1,51 @@
+version: 1
+
+email:
+  account: ""
+  imap_host: imap.gmail.com
+  imap_port: 993
+  mailbox: INBOX
+  search:
+    from: "reports@example.com"
+    subject_contains: "Daily SOP"
+    since_days: 14
+    unread_only: false
+  attachments:
+    filename_patterns:
+      - "*.xlsx"
+      - "*.xlsm"
+
+schedule:
+  enabled: true
+  days:
+    - monday
+    - tuesday
+    - wednesday
+    - thursday
+    - friday
+  time: "07:00"
+  polling_seconds: 20
+
+output:
+  downloads_directory: downloads
+  reports_directory: reports
+  report_filename: "Olympia_SOP_%Y-%m-%d_%H%M%S.xlsx"
+
+printer:
+  enabled: true
+  # Leave blank to use the Windows/Excel default printer. For a named printer,
+  # use the exact name Excel shows, including a port suffix if Excel includes it.
+  name: ""
+  paper_size: tabloid
+  orientation: landscape
+  copies: 1
+  fit_to_pages_wide: 1
+  fit_to_pages_tall: 0
+
+logging:
+  level: INFO
+  max_bytes: 2097152
+  backup_count: 5
+
+tray:
+  tooltip: SOP Reporter

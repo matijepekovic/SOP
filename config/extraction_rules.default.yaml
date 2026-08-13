@@ -1,0 +1,154 @@
+version: 1
+
+# Based on the Salesforce GM SOP report shown for the Olympia market.
+# Header/sheet values can be adjusted after the first real emailed workbook is available.
+input:
+  # null uses the workbook's active worksheet.
+  sheet_name: null
+  header_row: 1
+  data_start_row: 2
+  stop_at_first_blank_row: false
+  skip_blank_rows: true
+
+columns:
+  # Market and Sub Status drive filtering/splitting. They are hidden from the
+  # printed table because the report title already identifies both values.
+  - source: Market
+    target: Market
+    type: text
+    required: true
+    include_in_report: false
+    fill_down: true
+  - source: Sub Status
+    target: Sub Status
+    type: text
+    required: true
+    include_in_report: false
+    fill_down: true
+  - source: Product
+    target: Product
+    type: text
+    required: true
+    width: 12
+  - source: Job Number
+    target: Job Number
+    type: text
+    required: true
+    width: 13
+  - source: Contact Full Name
+    target: Contact Full Name
+    type: text
+    required: true
+    width: 21
+  - source: Opportunity Name
+    target: Opportunity Name
+    type: text
+    required: true
+    width: 34
+  - source: Next Step-WO
+    target: Next Step-WO
+    type: text
+    required: true
+    width: 48
+  - source: Amount
+    target: Amount
+    type: currency
+    required: true
+    number_format: '$#,##0.00'
+    width: 14
+  - source: Days in Current Sub Status
+    target: Days in Current Sub Status
+    type: integer
+    required: true
+    number_format: '0'
+    width: 15
+  - source: Close Date
+    target: Close Date
+    type: date
+    required: true
+    number_format: mm/dd/yyyy
+    width: 13
+  - source: Sales Rep 1 Name
+    target: Sales Rep 1 Name
+    type: text
+    required: true
+    width: 18
+  - source: Sales Rep 2 Name
+    target: Sales Rep 2 Name
+    type: text
+    required: false
+    width: 18
+
+filters:
+  mode: all
+  rules:
+    - column: Market
+      operator: equals
+      value: Olympia
+      case_sensitive: false
+    # Excludes Salesforce subtotal and grand-total rows.
+    - column: Job Number
+      operator: not_blank
+
+# Every distinct Sub Status remaining after the Olympia filter becomes its own
+# workbook and its own Excel print job. New status names are handled automatically.
+split:
+  enabled: true
+  by: Sub Status
+  title_template: 'OLYMPIA — {value}'
+  filename_suffix: '_{value}'
+  include_blank: true
+  blank_label: No Sub Status
+
+grouping:
+  enabled: false
+  by: []
+  aggregations: []
+
+sort:
+  - column: Days in Current Sub Status
+    direction: desc
+  - column: Close Date
+    direction: asc
+  - column: Job Number
+    direction: asc
+
+report:
+  worksheet_name: Olympia SOP
+  title: OLYMPIA SOP REPORT
+  table_start_row: 4
+  show_generated_at: true
+  generated_at_label: Generated
+  freeze_panes: auto
+  auto_filter: true
+  page:
+    paper_size: tabloid
+    orientation: landscape
+    fit_to_pages_wide: 1
+    fit_to_pages_tall: 0
+    margin_inches: 0.2
+  styles:
+    title:
+      font_name: Aptos Display
+      font_size: 18
+      bold: true
+      font_color: FFFFFF
+      fill_color: 172033
+      alignment: left
+    header:
+      font_name: Aptos
+      font_size: 9
+      bold: true
+      font_color: FFFFFF
+      fill_color: 1F4E78
+      alignment: center
+      row_height: 30
+    body:
+      font_name: Aptos
+      font_size: 8.5
+      font_color: 111827
+      fill_color: FFFFFF
+      alternate_fill_color: EAF2F8
+      alignment: left
+      border_color: B8C4CE
+      row_height: 30

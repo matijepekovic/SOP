@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#172033"/>
+  <rect x="18" y="18" width="220" height="220" rx="38" fill="#1F4E78" stroke="#7DB2D8" stroke-width="8"/>
+  <path d="M52 64h152v18H52zM52 174h152v18H52z" fill="#FFFFFF" opacity=".9"/>
+  <text x="128" y="151" text-anchor="middle" font-family="Arial, sans-serif" font-size="66" font-weight="700" fill="#FFFFFF">SOP</text>
+</svg>
+
