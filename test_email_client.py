@@ -107,7 +107,47 @@ class GmailIMAPClientTests(unittest.TestCase):
             self.assertEqual(records, [])
             self.assertEqual(list(Path(directory).iterdir()), [])
 
+    def test_blank_filters_fall_back_to_latest_inbox_messages(self) -> None:
+        config = EmailConfig(
+            account="sheetssop@gmail.com",
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            mailbox="INBOX",
+            search=EmailSearchConfig(
+                sender="",
+                subject_contains="",
+                since_days=14,
+                unread_only=False,
+            ),
+            attachments=AttachmentConfig(("*.xlsx",)),
+        )
+        imap = MagicMock()
+        imap.login.return_value = ("OK", [])
+        imap.select.return_value = ("OK", [b"3"])
+        imap.search.side_effect = [
+            ("OK", [b""]),
+            ("OK", [b""]),
+            ("OK", [b"1 2 3"]),
+        ]
+        imap.fetch.side_effect = [
+            ("OK", [(b"1", _message_bytes("<one>", "one.xlsx", b"1"))]),
+            ("OK", [(b"2", _message_bytes("<two>", "two.xlsx", b"2"))]),
+            ("OK", [(b"3", _message_bytes("<three>", "three.xlsx", b"3"))]),
+        ]
+        client = GmailIMAPClient(
+            config,
+            "sheetssop@gmail.com",
+            "abcdefghijklmnop",
+            imap_factory=MagicMock(return_value=imap),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            records = client.fetch_messages(Path(directory), today=date(2026, 8, 13))
+
+        self.assertEqual(len(records), 3)
+        self.assertEqual(imap.search.call_count, 3)
+        self.assertEqual(imap.search.call_args_list[-1].args, (None, "ALL"))
+
 
 if __name__ == "__main__":
     unittest.main()
-
