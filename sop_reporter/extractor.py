@@ -79,6 +79,21 @@ def _is_summary_label(value: Any) -> bool:
     )
 
 
+SUMMARY_MARKERS = {"subtotal", "total", "grand total", "sum", "avg", "average", "count"}
+
+
+def _is_summary_row(values: Sequence[Any]) -> bool:
+    """Whether a row is one of an export's aggregate lines.
+
+    Matched on whole cells only, so a value that merely contains "total"
+    (an address, a note) is never mistaken for one.
+    """
+    return any(
+        isinstance(value, str) and value.strip().casefold() in SUMMARY_MARKERS
+        for value in values
+    )
+
+
 def _parse_number(value: Any) -> float | int | None:
     if _is_blank(value):
         return None
@@ -528,6 +543,13 @@ class ExtractionEngine:
                         break
                     if self.config.input.skip_blank_rows:
                         continue
+
+                if _is_summary_row(values):
+                    # Grouped exports interleave Subtotal/Sum/Avg/Count lines.
+                    # Their aggregate value lands in whichever column sits under
+                    # it — a Count of 2 reads as Job Number "2" — so these rows
+                    # must be dropped rather than mapped.
+                    continue
 
                 raw_row = {
                     original: values[index] if index < len(values) else None

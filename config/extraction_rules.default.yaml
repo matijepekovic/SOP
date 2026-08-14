@@ -71,8 +71,18 @@ columns:
     required: true
     number_format: mm/dd/yyyy
     width: 13
-  # The GM SOP export carries no sales-rep column. The service resource is
-  # the closest equivalent it does provide.
+  # Optional: present in some GM SOP report variants and absent from others,
+  # so these are never required and simply stay blank when missing.
+  - source: Sales Rep 1 Name
+    target: Sales Rep 1 Name
+    type: text
+    required: false
+    width: 18
+  - source: Sales Rep 2 Name
+    target: Sales Rep 2 Name
+    type: text
+    required: false
+    width: 18
   - source: 'Assigned Service Resource: Name'
     target: Assigned Resource
     type: text
