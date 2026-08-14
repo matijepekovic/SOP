@@ -34,7 +34,9 @@ output:
   report_filename: "Olympia_SOP_%Y-%m-%d_%H%M%S.xlsx"
 
 printer:
-  enabled: true
+  # Off: reports are built and saved to the reports folder, nothing is sent
+  # to a printer. Turn on once the printer side is sorted out.
+  enabled: false
   # "printer" sends each report to the printer.
   # "pdf" saves a PDF next to the report instead, using the same Tabloid page
   # setup, which is the way to preview output without using paper.
