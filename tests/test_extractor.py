@@ -82,6 +82,20 @@ class ExtractionEngineTests(unittest.TestCase):
         self.assertIn("Job Number", message)
         self.assertIn("Data", message)
 
+    def test_zero_width_characters_are_stripped_from_text(self) -> None:
+        from sop_reporter.extractor import _normalized_text
+
+        # Status labels arrive with invisible characters that would otherwise
+        # reach report titles and filenames.
+        self.assertEqual(
+            _normalized_text("Working\u200b - Incomplete Paperwork\u200b"),
+            "Working - Incomplete Paperwork",
+        )
+        # A real visible dash is content and must survive.
+        self.assertEqual(
+            _normalized_text("Working \u2013 CXL/Save"), "Working \u2013 CXL/Save"
+        )
+
     def test_column_rename_and_type_conversion(self) -> None:
         data = ExtractionEngine(self.base_config).extract_file(self.workbook_path)
         self.assertEqual(data.headers[0], "Representative")

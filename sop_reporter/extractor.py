@@ -62,10 +62,16 @@ def header_key(value: Any) -> str:
     return normalize_header(value).casefold()
 
 
+# Exports carry zero-width characters inside status labels. They are invisible
+# but land in report titles and filenames and break filters written against the
+# visible text, so they are removed from every text value.
+ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\ufeff"))
+
+
 def _normalized_text(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
-    return str(value).strip()
+    return str(value).translate(ZERO_WIDTH).strip()
 
 
 def _is_summary_label(value: Any) -> bool:

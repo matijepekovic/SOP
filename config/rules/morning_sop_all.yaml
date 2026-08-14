@@ -1,43 +1,31 @@
-# Morning SOP ALL
-#
-# DISABLED PENDING REAL COLUMN HEADERS.
-#
-# The columns below are copied from the GM SOP report as a starting point and
-# have NOT been verified against a real "Morning SOP ALL" workbook. Enabling this file
-# before checking them will fail extraction with an error listing the headers
-# the workbook actually contains.
-#
-# To finish this report:
-#   1. Run SOP Reporter once and open logs/app.log.
-#   2. Find the line:  <file> sheet '<name>' row <n> headers: ...
-#   3. Correct input.header_row / input.sheet_name and the column sources
-#      below to match, then set match.enabled to true.
+# Morning SOP ALL — Salesforce "Morning SOP ALL" export.
+# Column names differ throughout from GM SOP, so this is authored separately
+# rather than sharing that report's rules.
+# One printed document per Sub Status.
 name: Morning SOP ALL
 
 match:
   filename_patterns:
     - "Morning SOP ALL*.xlsx"
     - "Morning SOP ALL*.xlsm"
-  enabled: false
+  enabled: true
 
 output:
   report_filename: "Morning_SOP_ALL_%Y-%m-%d_%H%M%S.xlsx"
 
 version: 1
 
-# Based on the Salesforce GM SOP report shown for the Olympia market.
-# Header/sheet values can be adjusted after the first real emailed workbook is available.
 input:
   # null uses the workbook's active worksheet.
   sheet_name: null
-  header_row: 1
-  data_start_row: 2
+  # The export opens with a title and filter banner, so the header row moves.
+  header_row: auto
   stop_at_first_blank_row: false
   skip_blank_rows: true
 
 columns:
-  # Market and Sub Status drive filtering/splitting. They are hidden from the
-  # printed table because the report title already identifies both values.
+  # Market and Sub Status drive filtering and splitting. They are hidden from
+  # the printed table because the report title already names both.
   - source: Market
     target: Market
     type: text
@@ -54,54 +42,57 @@ columns:
     target: Product
     type: text
     required: true
+    # Grouped in the export: the value appears once per group and the detail
+    # rows beneath it are blank.
+    fill_down: true
     width: 12
   - source: Job Number
     target: Job Number
     type: text
     required: true
     width: 13
-  - source: Contact Full Name
-    target: Contact Full Name
+  - source: Contact Name
+    target: Contact Name
     type: text
     required: true
-    width: 21
+    width: 22
   - source: Opportunity Name
     target: Opportunity Name
     type: text
     required: true
-    width: 34
-  - source: Next Step-WO
-    target: Next Step-WO
+    width: 40
+  - source: Next Step
+    target: Next Step
     type: text
     required: true
-    width: 48
+    width: 46
   - source: Amount
     target: Amount
     type: currency
     required: true
     number_format: '$#,##0.00'
     width: 14
-  - source: Days in Current Sub Status
-    target: Days in Current Sub Status
-    type: integer
+  - source: Age
+    target: Age
+    type: number
     required: true
-    number_format: '0'
-    width: 15
+    number_format: '0.#'
+    width: 8
   - source: Close Date
     target: Close Date
     type: date
     required: true
     number_format: mm/dd/yyyy
-    width: 13
-  - source: Sales Rep 1 Name
-    target: Sales Rep 1 Name
+    width: 12
+  - source: Sales Rep 1
+    target: Sales Rep 1
     type: text
     required: true
     width: 18
-  - source: Sales Rep 2 Name
-    target: Sales Rep 2 Name
+  - source: Sales Rep 2
+    target: Sales Rep 2
     type: text
-    required: false
+    required: true
     width: 18
 
 filters:
@@ -116,31 +107,23 @@ filters:
       operator: not_blank
 
 # Every distinct Sub Status remaining after the Olympia filter becomes its own
-# workbook and its own Excel print job. New status names are handled automatically.
+# workbook and its own print job.
 split:
   enabled: true
   by: Sub Status
-  title_template: 'OLYMPIA — {value}'
+  title_template: 'OLYMPIA MORNING SOP — {value}'
   filename_suffix: '_{value}'
   include_blank: true
   blank_label: No Sub Status
 
 grouping:
   enabled: false
-  by: []
-  aggregations: []
 
-sort:
-  - column: Days in Current Sub Status
-    direction: desc
-  - column: Close Date
-    direction: asc
-  - column: Job Number
-    direction: asc
+sort: []
 
 report:
-  worksheet_name: Morning SOP ALL
-  title: MORNING SOP ALL
+  worksheet_name: Morning SOP
+  title: OLYMPIA MORNING SOP
   table_start_row: 4
   show_generated_at: true
   generated_at_label: Generated

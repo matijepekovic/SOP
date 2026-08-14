@@ -327,13 +327,26 @@ class DefinitionLoadingTests(unittest.TestCase):
         definitions = load_report_definitions(PROJECT_ROOT / "config")
         by_name = {d.name: d for d in definitions}
 
-        self.assertIn("GM SOP", by_name)
-        self.assertTrue(by_name["GM SOP"].match.enabled)
-        self.assertTrue(by_name["GM SOP"].extraction.split.enabled)
-        # The two reports whose real columns are still unknown ship disabled so
-        # a fresh install prints GM SOP instead of failing on all three.
-        self.assertFalse(by_name["Morning SOP ALL"].match.enabled)
+        for name in ("GM SOP", "Morning SOP ALL"):
+            self.assertIn(name, by_name)
+            self.assertTrue(by_name[name].match.enabled)
+            self.assertTrue(by_name[name].extraction.split.enabled)
+        # Each report writes to its own filename so outputs cannot collide.
+        self.assertNotEqual(
+            by_name["GM SOP"].report_filename,
+            by_name["Morning SOP ALL"].report_filename,
+        )
+        # The report whose real columns are still unknown ships disabled.
         self.assertFalse(by_name["Need To Collect Company"].match.enabled)
+
+    def test_the_two_live_reports_claim_different_files(self) -> None:
+        by_name = {d.name: d for d in load_report_definitions(PROJECT_ROOT / "config")}
+        gm = by_name["GM SOP"].match
+        morning = by_name["Morning SOP ALL"].match
+        self.assertTrue(gm.matches("GM SOP-2026-08-13.xlsx"))
+        self.assertFalse(gm.matches("Morning SOP ALL-2026-08-13.xlsx"))
+        self.assertTrue(morning.matches("Morning SOP ALL-2026-08-13.xlsx"))
+        self.assertFalse(morning.matches("GM SOP-2026-08-13.xlsx"))
 
     def test_missing_rules_directory_falls_back_to_the_legacy_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
