@@ -91,6 +91,37 @@ Updates come from the repository's GitHub Releases, so a release must exist with
 
 Nothing is downloaded until you press **Check for Updates**, and nothing is installed until you confirm. An update is refused while a fetch/report/print run is in progress.
 
+## Per-report rules: `config/rules/`
+
+Each emailed report gets its own YAML file in `config/rules/`. A file is a complete extraction ruleset (the same schema documented under `extraction_rules.yaml` below) plus two extra blocks that say which attachment it claims and what to call its output:
+
+```yaml
+name: GM SOP
+
+match:
+  # Attachment filename globs, matched case-insensitively.
+  filename_patterns:
+    - "GM SOP*.xlsx"
+    - "GM SOP*.xlsm"
+  enabled: true
+
+output:
+  # Overrides output.report_filename from app_config.yaml so reports from
+  # different rule files cannot collide in the reports folder.
+  report_filename: "GM_SOP_%Y-%m-%d_%H%M%S.xlsx"
+```
+
+How a run uses them:
+
+- Every downloaded attachment is offered to each enabled report in filename order, and goes to the **first** one whose `filename_patterns` match. Attachments matching nothing are logged and skipped — a mailbox carrying unrelated spreadsheets is not an error.
+- Each report then extracts, builds, and prints independently. **A report that splits by Sub Status produces one document, and one print job, per Sub Status**, so a run's output is (reports × their Sub Statuses).
+- If one report fails — wrong columns, corrupt workbook — the others still print. The failure is named in the log and in the tray message rather than taking the whole run down.
+- Setting `match.enabled: false` parks a report without deleting its file. Reports whose real column layout is not yet known ship this way.
+
+New rule files shipped by a later version are copied into your config folder on the next start. Files you have already edited are never overwritten.
+
+If `config/rules/` is missing or empty, the single legacy `extraction_rules.yaml` is used instead, so installations created before per-report rules existed keep working unchanged.
+
 ## `extraction_rules.yaml`
 
 Rules are applied in this order:

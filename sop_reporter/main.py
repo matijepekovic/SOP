@@ -7,16 +7,16 @@ from pathlib import Path
 from sop_reporter import __version__
 from sop_reporter.config import (
     load_app_config,
-    load_extraction_config,
+    load_report_definitions,
     update_email_account,
 )
 from sop_reporter.credentials import CredentialManager
 from sop_reporter.email_client import GmailIMAPClient
-from sop_reporter.exceptions import CredentialsCancelledError
+from sop_reporter.exceptions import ConfigurationError, CredentialsCancelledError
 from sop_reporter.extractor import ExtractionEngine
 from sop_reporter.logging_setup import setup_logging
 from sop_reporter.paths import AppPaths
-from sop_reporter.pipeline import JobRunner
+from sop_reporter.pipeline import JobRunner, ReportJob
 from sop_reporter.printer import ExcelPrinter
 from sop_reporter.report_builder import ReportBuilder
 from sop_reporter.scheduler import JobScheduler
@@ -50,7 +50,18 @@ def _build_runner(paths: AppPaths) -> tuple[JobRunner, object]:
         update_email_account(paths.app_config_path, credentials.account)
         app_config = load_app_config(paths.app_config_path)
 
-    extraction_config = load_extraction_config(paths.extraction_config_path)
+    definitions = load_report_definitions(paths.config_dir)
+    enabled = [d for d in definitions if d.match.enabled]
+    LOGGER.info(
+        "Loaded %d report definition(s); enabled: %s",
+        len(definitions),
+        ", ".join(d.name for d in enabled) or "(none)",
+    )
+    if not enabled:
+        raise ConfigurationError(
+            "No report is enabled. Set match.enabled to true in at least one "
+            f"file under {paths.config_dir / 'rules'}."
+        )
     downloads_dir = paths.resolve_runtime_directory(
         app_config.output.downloads_directory
     )
@@ -64,11 +75,19 @@ def _build_runner(paths: AppPaths) -> tuple[JobRunner, object]:
         app_password=credentials.app_password,
     )
     printer = ExcelPrinter(app_config.printer)
+    jobs = [
+        ReportJob(
+            definition=definition,
+            extractor=ExtractionEngine(definition.extraction),
+            report_builder=ReportBuilder(definition.extraction),
+        )
+        for definition in definitions
+        if definition.match.enabled
+    ]
     runner = JobRunner(
         email_client=email_client,
         state_store=ProcessedStateStore(paths.state_path),
-        extractor=ExtractionEngine(extraction_config),
-        report_builder=ReportBuilder(extraction_config),
+        jobs=jobs,
         printer=printer,
         downloads_dir=downloads_dir,
         reports_dir=reports_dir,

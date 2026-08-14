@@ -23,6 +23,11 @@ hiddenimports = [
 datas = [
     (str(project_root / "config" / "app_config.default.yaml"), "config"),
     (str(project_root / "config" / "extraction_rules.default.yaml"), "config"),
+] + [
+    # One file per emailed report; see config/rules/.
+    (str(path), "config/rules")
+    for path in sorted((project_root / "config" / "rules").glob("*.yaml"))
+] + [
     (str(icon_path), "assets"),
 ]
 

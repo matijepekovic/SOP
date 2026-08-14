@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -486,7 +487,10 @@ def _parse_text_style(
 
 
 def load_extraction_config(path: Path) -> ExtractionConfig:
-    root = _load_yaml(path)
+    return extraction_config_from_mapping(_load_yaml(path))
+
+
+def extraction_config_from_mapping(root: Mapping[str, Any]) -> ExtractionConfig:
     version = _positive_int(root.get("version", 1), "version")
     if version != 1:
         raise ConfigurationError(f"Unsupported extraction config version: {version}")
@@ -792,6 +796,125 @@ def load_extraction_config(path: Path) -> ExtractionConfig:
         sort=tuple(sort_rules),
         report=report,
     )
+
+
+RULES_DIRECTORY_NAME = "rules"
+LEGACY_RULES_FILENAME = "extraction_rules.yaml"
+DEFAULT_ATTACHMENT_PATTERNS = ("*.xlsx", "*.xlsm")
+
+
+@dataclass(frozen=True)
+class MatchConfig:
+    """Which downloaded attachments a report definition claims."""
+
+    filename_patterns: tuple[str, ...] = DEFAULT_ATTACHMENT_PATTERNS
+    enabled: bool = True
+
+    def matches(self, filename: str) -> bool:
+        if not self.enabled:
+            return False
+        name = Path(filename).name.casefold()
+        return any(
+            fnmatch.fnmatch(name, pattern.casefold())
+            for pattern in self.filename_patterns
+        )
+
+
+@dataclass(frozen=True)
+class ReportDefinition:
+    """One emailed report: how to recognize it and how to turn it into output."""
+
+    name: str
+    match: MatchConfig
+    extraction: ExtractionConfig
+    report_filename: str | None = None
+    source: Path | None = None
+
+
+def _report_definition_from_mapping(
+    root: Mapping[str, Any], *, name: str, source: Path | None
+) -> ReportDefinition:
+    match_data = _mapping(root.get("match", {}), "match")
+    patterns = tuple(
+        str(item).strip()
+        for item in _sequence(
+            match_data.get("filename_patterns", DEFAULT_ATTACHMENT_PATTERNS),
+            "match.filename_patterns",
+        )
+        if str(item).strip()
+    )
+    if not patterns:
+        raise ConfigurationError("match.filename_patterns cannot be empty")
+
+    output_data = _mapping(root.get("output", {}), "output")
+    report_filename = str(output_data.get("report_filename", "")).strip() or None
+
+    return ReportDefinition(
+        name=str(root.get("name", "")).strip() or name,
+        match=MatchConfig(
+            filename_patterns=patterns,
+            enabled=bool(match_data.get("enabled", True)),
+        ),
+        extraction=extraction_config_from_mapping(root),
+        report_filename=report_filename,
+        source=source,
+    )
+
+
+def load_report_definitions(config_dir: Path) -> tuple[ReportDefinition, ...]:
+    """Load every report definition from ``config_dir``.
+
+    Each ``rules/*.yaml`` file is one report. When that directory is absent or
+    empty the single legacy ``extraction_rules.yaml`` is used instead, so
+    installations created before per-report rules existed keep working.
+    """
+    config_dir = Path(config_dir)
+    rules_dir = config_dir / RULES_DIRECTORY_NAME
+    definitions: list[ReportDefinition] = []
+
+    if rules_dir.is_dir():
+        # Sorted so routing order — and therefore which definition wins an
+        # overlapping pattern — is deterministic rather than filesystem order.
+        for path in sorted(rules_dir.glob("*.yaml")):
+            try:
+                definitions.append(
+                    _report_definition_from_mapping(
+                        _load_yaml(path), name=path.stem, source=path
+                    )
+                )
+            except ConfigurationError as exc:
+                raise ConfigurationError(f"{path.name}: {exc}") from exc
+
+    if definitions:
+        _reject_duplicate_names(definitions)
+        return tuple(definitions)
+
+    legacy = config_dir / LEGACY_RULES_FILENAME
+    if not legacy.is_file():
+        raise ConfigurationError(
+            f"No report rules found. Expected YAML files in {rules_dir} "
+            f"or a {LEGACY_RULES_FILENAME} in {config_dir}."
+        )
+    return (
+        ReportDefinition(
+            name=legacy.stem,
+            match=MatchConfig(),
+            extraction=load_extraction_config(legacy),
+            source=legacy,
+        ),
+    )
+
+
+def _reject_duplicate_names(definitions: Sequence[ReportDefinition]) -> None:
+    seen: set[str] = set()
+    for definition in definitions:
+        folded = definition.name.casefold()
+        if folded in seen:
+            raise ConfigurationError(
+                f"Two report rule files share the name {definition.name!r}; "
+                "names identify reports in logs and must be unique"
+            )
+        seen.add(folded)
 
 
 def update_email_account(path: Path, account: str) -> None:

@@ -8,7 +8,8 @@ from types import SimpleNamespace
 from sop_reporter.email_client import DownloadedAttachment, EmailRecord
 from sop_reporter.exceptions import PrintError
 from sop_reporter.extractor import ExtractedData, ExtractedPartition
-from sop_reporter.pipeline import JobRunner, RunStatus
+from sop_reporter.config import MatchConfig, ReportDefinition
+from sop_reporter.pipeline import JobRunner, ReportJob, RunStatus
 from sop_reporter.state_store import ProcessedStateStore
 
 
@@ -94,6 +95,29 @@ class FailingOnSecondPrinter(FakePrinter):
             raise PrintError("second print failed before PrintOut", print_invoked=False)
 
 
+
+def make_job(
+    name: str,
+    extractor,
+    *,
+    patterns: tuple[str, ...] = ("*.xlsx", "*.xlsm"),
+    enabled: bool = True,
+    report_filename: str | None = None,
+    builder=None,
+) -> ReportJob:
+    """Build a ReportJob around fake collaborators for pipeline tests."""
+    return ReportJob(
+        definition=ReportDefinition(
+            name=name,
+            match=MatchConfig(filename_patterns=patterns, enabled=enabled),
+            extraction=None,  # pipeline never reads this; the engine is faked
+            report_filename=report_filename,
+        ),
+        extractor=extractor,
+        report_builder=builder or FakeBuilder(),
+    )
+
+
 class PipelineTests(unittest.TestCase):
     def _make_runner(self, root: Path, printer, extractor=None):
         attachment_path = root / "input.xlsx"
@@ -117,8 +141,7 @@ class PipelineTests(unittest.TestCase):
         runner = JobRunner(
             email_client=FakeEmailClient(record),
             state_store=store,
-            extractor=extractor or FakeExtractor(),
-            report_builder=FakeBuilder(),
+            jobs=[make_job("Test Report", extractor or FakeExtractor())],
             printer=printer,
             downloads_dir=root / "downloads",
             reports_dir=root / "reports",

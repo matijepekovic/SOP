@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
-from sop_reporter.email_client import EmailRecord, GmailIMAPClient
+from sop_reporter.config import ReportDefinition
+from sop_reporter.email_client import DownloadedAttachment, EmailRecord, GmailIMAPClient
+from sop_reporter.exceptions import ExtractionError, ReportBuildError
 from sop_reporter.extractor import ExtractionEngine
 from sop_reporter.printer import ExcelPrinter
 from sop_reporter.report_builder import ReportBuilder
@@ -18,6 +20,19 @@ from sop_reporter.state_store import ProcessedStateStore
 
 LOGGER = logging.getLogger(__name__)
 INVALID_FILENAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+@dataclass(frozen=True)
+class ReportJob:
+    """A report definition paired with the engine and builder it drives."""
+
+    definition: ReportDefinition
+    extractor: ExtractionEngine
+    report_builder: ReportBuilder
+
+    @property
+    def name(self) -> str:
+        return self.definition.name
 
 
 class RunStatus(str, Enum):
@@ -47,8 +62,7 @@ class JobRunner:
         *,
         email_client: GmailIMAPClient,
         state_store: ProcessedStateStore,
-        extractor: ExtractionEngine,
-        report_builder: ReportBuilder,
+        jobs: Sequence[ReportJob],
         printer: ExcelPrinter,
         downloads_dir: Path,
         reports_dir: Path,
@@ -56,8 +70,7 @@ class JobRunner:
     ) -> None:
         self.email_client = email_client
         self.state_store = state_store
-        self.extractor = extractor
-        self.report_builder = report_builder
+        self.jobs = tuple(jobs)
         self.printer = printer
         self.downloads_dir = Path(downloads_dir)
         self.reports_dir = Path(reports_dir)
@@ -124,19 +137,46 @@ class JobRunner:
             for record in attachment_records
             for attachment in record.attachments
         ]
-        partitions = self.extractor.extract_partitions(
-            attachment.path for attachment in attachments
-        )
         attachment_message_ids = list(
             dict.fromkeys(record.message_id for record in attachment_records)
         )
-        total_rows = sum(len(partition.data.rows) for partition in partitions)
-        if not partitions or total_rows == 0:
+
+        routed = self._route_attachments(attachments)
+        report_paths: list[Path] = []
+        failures: list[str] = []
+        total_rows = 0
+
+        for job in self.jobs:
+            matched = routed.get(job.name)
+            if not matched:
+                continue
+            # One report failing must not cost the others their printout, so
+            # each definition is isolated. Failures are collected and reported
+            # once the runs that can succeed have.
+            try:
+                built, rows = self._build_reports_for(job, matched, started_at)
+            except (ExtractionError, ReportBuildError) as exc:
+                LOGGER.error("Report %r failed: %s", job.name, exc)
+                failures.append(f"{job.name}: {exc}")
+                continue
+            report_paths.extend(built)
+            total_rows += rows
+
+        if not report_paths:
+            outcome = "failed" if failures else "no_matching_rows"
             self.state_store.mark_processed(
                 attachment_message_ids,
-                outcome="no_matching_rows",
+                outcome=outcome,
                 metadata=metadata,
             )
+            if failures:
+                LOGGER.error("Every report failed for this run")
+                return RunResult(
+                    status=RunStatus.FAILED,
+                    message="No report could be produced. " + " | ".join(failures),
+                    email_count=len(records),
+                    attachment_count=len(attachments),
+                )
             LOGGER.info("Attachments contained no rows matching extraction filters")
             return RunResult(
                 RunStatus.NO_DATA,
@@ -144,17 +184,6 @@ class JobRunner:
                 email_count=len(records),
                 attachment_count=len(attachments),
             )
-
-        report_paths: list[Path] = []
-        for partition in partitions:
-            report_path = self._unique_report_path(started_at, partition.label)
-            self.report_builder.build(
-                partition.data,
-                report_path,
-                generated_at=started_at,
-                title=self.report_builder.title_for_partition(partition.label),
-            )
-            report_paths.append(report_path)
 
         self.state_store.claim_for_print(
             attachment_message_ids,
@@ -193,12 +222,16 @@ class JobRunner:
             total_rows,
         )
         report_word = "report" if len(report_paths) == 1 else "separate reports"
+        message = (
+            f"{len(report_paths)} {report_word} {action} "
+            f"with {total_rows} total row(s)."
+        )
+        if failures:
+            # The run still printed what it could; say plainly what did not.
+            message += f" {len(failures)} report(s) failed: " + " | ".join(failures)
         return RunResult(
             status=status,
-            message=(
-                f"{len(report_paths)} {report_word} {action} "
-                f"with {total_rows} total row(s)."
-            ),
+            message=message,
             report_path=report_paths[0],
             report_paths=tuple(report_paths),
             email_count=len(records),
@@ -206,13 +239,82 @@ class JobRunner:
             row_count=total_rows,
         )
 
-    def _unique_report_path(self, started_at: datetime, partition_label: str) -> Path:
-        filename = started_at.strftime(self.report_filename)
+    def _route_attachments(
+        self, attachments: Sequence[DownloadedAttachment]
+    ) -> dict[str, list[DownloadedAttachment]]:
+        """Assign each attachment to the first report definition that claims it."""
+        routed: dict[str, list[DownloadedAttachment]] = {}
+        for attachment in attachments:
+            for job in self.jobs:
+                if job.definition.match.matches(attachment.original_filename):
+                    routed.setdefault(job.name, []).append(attachment)
+                    LOGGER.info(
+                        "Attachment %s routed to report %r",
+                        attachment.original_filename,
+                        job.name,
+                    )
+                    break
+            else:
+                # Not an error: mailboxes carry unrelated spreadsheets, and a
+                # report can be deliberately disabled while it is configured.
+                LOGGER.info(
+                    "Attachment %s matched no enabled report and was skipped",
+                    attachment.original_filename,
+                )
+        return routed
+
+    def _build_reports_for(
+        self,
+        job: ReportJob,
+        attachments: Sequence[DownloadedAttachment],
+        started_at: datetime,
+    ) -> tuple[list[Path], int]:
+        partitions = job.extractor.extract_partitions(
+            attachment.path for attachment in attachments
+        )
+        rows = sum(len(partition.data.rows) for partition in partitions)
+        if not partitions or rows == 0:
+            LOGGER.info("Report %r produced no rows after filtering", job.name)
+            return [], 0
+
+        built: list[Path] = []
+        for partition in partitions:
+            report_path = self._unique_report_path(
+                started_at,
+                partition.label,
+                job=job,
+            )
+            job.report_builder.build(
+                partition.data,
+                report_path,
+                generated_at=started_at,
+                title=job.report_builder.title_for_partition(partition.label),
+            )
+            built.append(report_path)
+        LOGGER.info(
+            "Report %r produced %d document(s) from %d row(s)",
+            job.name,
+            len(built),
+            rows,
+        )
+        return built, rows
+
+    def _unique_report_path(
+        self,
+        started_at: datetime,
+        partition_label: str,
+        *,
+        job: ReportJob | None = None,
+    ) -> Path:
+        pattern = self.report_filename
+        if job is not None and job.definition.report_filename:
+            pattern = job.definition.report_filename
+        filename = started_at.strftime(pattern)
         source_path = Path(filename)
         suffix = ""
-        if partition_label:
+        if partition_label and job is not None:
             safe_label = self._filename_token(partition_label)
-            raw_suffix = self.report_builder.filename_suffix_for_partition(safe_label)
+            raw_suffix = job.report_builder.filename_suffix_for_partition(safe_label)
             suffix = INVALID_FILENAME_CHARACTERS.sub("_", raw_suffix)
             suffix = re.sub(r"\s+", "_", suffix).strip(" .")
             if not suffix:

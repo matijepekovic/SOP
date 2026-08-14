@@ -121,3 +121,22 @@ class AppPaths:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
 
+        self._seed_rules_directory()
+
+    def _seed_rules_directory(self) -> None:
+        """Copy the bundled per-report rule files into the writable config dir.
+
+        Files the operator has already edited are never overwritten, but new
+        report definitions shipped by a later version are added, so an update
+        can introduce a report without the operator recreating it by hand.
+        """
+        bundled = self.resource("config/rules")
+        if not bundled.is_dir():
+            return
+        destination_dir = self.config_dir / "rules"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        for source in sorted(bundled.glob("*.yaml")):
+            destination = destination_dir / source.name
+            if not destination.exists():
+                shutil.copy2(source, destination)
+
