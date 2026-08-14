@@ -165,6 +165,14 @@ class TrayConfig:
 
 
 @dataclass(frozen=True)
+class UpdateConfig:
+    enabled: bool
+    repository: str
+    check_on_startup: bool
+    include_prereleases: bool
+
+
+@dataclass(frozen=True)
 class AppConfig:
     version: int
     email: EmailConfig
@@ -173,6 +181,7 @@ class AppConfig:
     printer: PrinterConfig
     logging: LoggingConfig
     tray: TrayConfig
+    update: UpdateConfig
 
 
 @dataclass(frozen=True)
@@ -416,6 +425,19 @@ def load_app_config(path: Path) -> AppConfig:
     tray_data = _mapping(root.get("tray", {}), "tray")
     tray = TrayConfig(tooltip=str(tray_data.get("tooltip", "SOP Reporter")).strip())
 
+    update_data = _mapping(root.get("update", {}), "update")
+    repository = str(update_data.get("repository", "matijepekovic/SOP")).strip()
+    if repository.count("/") != 1 or repository.startswith("/") or repository.endswith("/"):
+        raise ConfigurationError(
+            "update.repository must look like owner/name, for example matijepekovic/SOP"
+        )
+    update = UpdateConfig(
+        enabled=bool(update_data.get("enabled", True)),
+        repository=repository,
+        check_on_startup=bool(update_data.get("check_on_startup", True)),
+        include_prereleases=bool(update_data.get("include_prereleases", False)),
+    )
+
     return AppConfig(
         version=version,
         email=email,
@@ -424,6 +446,7 @@ def load_app_config(path: Path) -> AppConfig:
         printer=printer,
         logging=logging_config,
         tray=tray,
+        update=update,
     )
 
 

@@ -27,6 +27,9 @@ class TrayApp:
         extraction_config_path: Path,
         logs_dir: Path,
         reports_dir: Path,
+        updater=None,
+        current_version: str = "",
+        check_updates_on_startup: bool = False,
     ) -> None:
         self.job_runner = job_runner
         self.scheduler = scheduler
@@ -36,6 +39,9 @@ class TrayApp:
         self.extraction_config_path = extraction_config_path
         self.logs_dir = logs_dir
         self.reports_dir = reports_dir
+        self.updater = updater
+        self.current_version = current_version
+        self.check_updates_on_startup = check_updates_on_startup
         self._icon: Any | None = None
 
     def run(self) -> None:
@@ -54,6 +60,7 @@ class TrayApp:
             pystray.MenuItem("Open Settings", self._open_settings),
             pystray.MenuItem("Open Logs", self._open_logs),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Check for Updates", self._check_updates),
             pystray.MenuItem("Exit", self._exit),
         )
         self._icon = pystray.Icon(
@@ -75,6 +82,9 @@ class TrayApp:
             extraction_config_path=self.extraction_config_path,
             reports_dir=self.reports_dir,
             logs_dir=self.logs_dir,
+            updater=self.updater,
+            current_version=self.current_version,
+            check_updates_on_startup=self.check_updates_on_startup,
         )
         self._control_window.run()
 
@@ -82,6 +92,20 @@ class TrayApp:
         window = getattr(self, "_control_window", None)
         if window is not None:
             window.show()
+
+    def _check_updates(self, _icon=None, _item=None) -> None:
+        """Surface the update flow, which lives in the control window."""
+        window = getattr(self, "_control_window", None)
+        if window is None:
+            return
+        if self.updater is None:
+            self._notify(
+                "Updates are disabled in the configuration file.",
+                "SOP Reporter",
+            )
+            return
+        window.show()
+        window.check_for_updates()
 
     def _load_icon(self) -> Image.Image:
         try:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import time
 
 
 ERROR_ALREADY_EXISTS = 183
@@ -16,7 +17,29 @@ class SingleInstance:
         self._handle = handle
 
     @classmethod
-    def acquire(cls, name: str = "Local\\SOPReporter.Tray.Instance") -> "SingleInstance":
+    def acquire(
+        cls,
+        name: str = "Local\\SOPReporter.Tray.Instance",
+        *,
+        wait_seconds: float = 0.0,
+    ) -> "SingleInstance":
+        """Claim the single-instance mutex.
+
+        ``wait_seconds`` lets a freshly installed build wait for the older
+        process that launched it to finish exiting. Without it the relaunch
+        after a self-update would race the outgoing process and lose.
+        """
+        deadline = time.monotonic() + max(0.0, wait_seconds)
+        while True:
+            try:
+                return cls._try_acquire(name)
+            except AlreadyRunningError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.25)
+
+    @classmethod
+    def _try_acquire(cls, name: str) -> "SingleInstance":
         if os.name != "nt":
             return cls()
         kernel32 = ctypes.windll.kernel32

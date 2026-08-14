@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 import queue
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -9,7 +11,11 @@ from typing import Callable
 
 import yaml
 
+from sop_reporter.exceptions import UpdateError
 from sop_reporter.pipeline import RunResult, RunStatus
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ControlWindow:
@@ -25,6 +31,9 @@ class ControlWindow:
         extraction_config_path: Path,
         reports_dir: Path,
         logs_dir: Path,
+        updater=None,
+        current_version: str = "",
+        check_updates_on_startup: bool = False,
     ) -> None:
         self.job_runner = job_runner
         self._run_now_callback = run_now
@@ -33,6 +42,10 @@ class ControlWindow:
         self.extraction_config_path = Path(extraction_config_path)
         self.reports_dir = Path(reports_dir)
         self.logs_dir = Path(logs_dir)
+        self.updater = updater
+        self.current_version = current_version
+        self._pending_release = None
+        self._update_busy = False
         self._events: queue.Queue[tuple[str, object | None]] = queue.Queue()
 
         self.root = tk.Tk()
@@ -50,10 +63,15 @@ class ControlWindow:
         self.printer_enabled = tk.BooleanVar()
         self.printer_name = tk.StringVar()
         self.status = tk.StringVar(value="Ready")
+        self.update_status = tk.StringVar(
+            value=f"Version {current_version}" if current_version else "Version unknown"
+        )
 
         self._build()
         self._load()
         self.root.after(150, self._drain_events)
+        if check_updates_on_startup and self.updater is not None:
+            self.root.after(2000, lambda: self._check_updates(silent=True))
 
     def _build(self) -> None:
         outer = ttk.Frame(self.root, padding=18)
@@ -103,6 +121,33 @@ class ControlWindow:
         ttk.Entry(printer, textvariable=self.printer_name).grid(row=1, column=1, sticky="ew", padx=(12, 0), pady=4)
         printer.columnconfigure(1, weight=1)
         ttk.Label(printer, text="Blank uses the Windows default printer. Output is forced to 17×11 landscape.", foreground="#555555").grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        updates = ttk.LabelFrame(outer, text="Software updates", padding=12)
+        updates.pack(fill="x", pady=(0, 12))
+        update_buttons = ttk.Frame(updates)
+        update_buttons.pack(fill="x")
+        self.check_update_button = ttk.Button(
+            update_buttons,
+            text="Check for Updates",
+            command=lambda: self._check_updates(silent=False),
+        )
+        self.check_update_button.pack(side="left")
+        self.install_update_button = ttk.Button(
+            update_buttons,
+            text="Install and Restart",
+            command=self._install_update,
+            state="disabled",
+        )
+        self.install_update_button.pack(side="left", padx=6)
+        ttk.Label(
+            updates,
+            textvariable=self.update_status,
+            wraplength=680,
+            foreground="#555555",
+        ).pack(anchor="w", pady=(8, 0))
+        if self.updater is None:
+            self.check_update_button.configure(state="disabled")
+            self.update_status.set("Updates are disabled in the configuration file.")
 
         footer = ttk.Frame(outer)
         footer.pack(fill="x", pady=(4, 0))
@@ -192,6 +237,121 @@ class ControlWindow:
     def set_result(self, result: RunResult) -> None:
         self._events.put(("result", result))
 
+    # ------------------------------------------------------------------
+    # Software updates
+    # ------------------------------------------------------------------
+    def check_for_updates(self) -> None:
+        """Public entry point, safe to call from the tray thread."""
+        self.root.after(0, lambda: self._check_updates(silent=False))
+
+    def _check_updates(self, *, silent: bool) -> None:
+        """Ask GitHub for a newer release. Network work runs off the UI thread."""
+        if self.updater is None or self._update_busy:
+            return
+        self._update_busy = True
+        self.check_update_button.configure(state="disabled")
+        self.install_update_button.configure(state="disabled")
+        self.update_status.set("Checking for updates…")
+        threading.Thread(
+            target=self._check_updates_worker,
+            args=(silent,),
+            name="SOP-Update-Check",
+            daemon=True,
+        ).start()
+
+    def _check_updates_worker(self, silent: bool) -> None:
+        try:
+            release = self.updater.check()
+        except UpdateError as exc:
+            self._events.put(("update_error", (str(exc), silent)))
+        except Exception as exc:  # pragma: no cover - defensive
+            LOGGER.exception("Unexpected failure while checking for updates")
+            self._events.put(("update_error", (str(exc), silent)))
+        else:
+            self._events.put(("update_checked", (release, silent)))
+
+    def _install_update(self) -> None:
+        release = self._pending_release
+        if self.updater is None or release is None or self._update_busy:
+            return
+        confirmed = messagebox.askyesno(
+            "Install update",
+            f"Install version {release.version} and restart SOP Reporter now?\n\n"
+            "Any run in progress will be interrupted.",
+            parent=self.root,
+        )
+        if not confirmed:
+            return
+        if self.job_runner.is_running:
+            messagebox.showinfo(
+                "SOP Reporter is busy",
+                "A fetch/report/print run is in progress. Wait for it to finish, "
+                "then install the update.",
+                parent=self.root,
+            )
+            return
+        self._update_busy = True
+        self.check_update_button.configure(state="disabled")
+        self.install_update_button.configure(state="disabled")
+        self.update_status.set(f"Downloading version {release.version}…")
+        threading.Thread(
+            target=self._install_update_worker,
+            args=(release,),
+            name="SOP-Update-Install",
+            daemon=True,
+        ).start()
+
+    def _install_update_worker(self, release) -> None:
+        def progress(received: int, total: int) -> None:
+            if total:
+                percent = int(received * 100 / total)
+                self._events.put(("update_progress", (release.version, percent)))
+
+        try:
+            self.updater.install(release, progress=progress)
+            self.updater.relaunch()
+        except UpdateError as exc:
+            self._events.put(("update_error", (str(exc), False)))
+        except Exception as exc:  # pragma: no cover - defensive
+            LOGGER.exception("Unexpected failure while installing the update")
+            self._events.put(("update_error", (str(exc), False)))
+        else:
+            self._events.put(("update_installed", release))
+
+    def _on_update_checked(self, release, silent: bool) -> None:
+        self._update_busy = False
+        self.check_update_button.configure(state="normal")
+        if release is None:
+            self._pending_release = None
+            self.install_update_button.configure(state="disabled")
+            self.update_status.set(
+                f"Version {self.current_version} is the latest available."
+            )
+            if not silent:
+                messagebox.showinfo(
+                    "No update available",
+                    f"SOP Reporter {self.current_version} is up to date.",
+                    parent=self.root,
+                )
+            return
+        self._pending_release = release
+        self.install_update_button.configure(state="normal")
+        self.update_status.set(
+            f"Version {release.version} is available "
+            f"(you have {self.current_version}). "
+            "Choose Install and Restart to apply it."
+        )
+
+    def _on_update_error(self, message: str, silent: bool) -> None:
+        self._update_busy = False
+        self.check_update_button.configure(state="normal")
+        self.install_update_button.configure(
+            state="normal" if self._pending_release else "disabled"
+        )
+        self.update_status.set(f"Update check failed: {message}")
+        if not silent:
+            messagebox.showerror("Update failed", message, parent=self.root)
+
     def _drain_events(self) -> None:
         while True:
             try:
@@ -206,6 +366,19 @@ class ControlWindow:
                 self.run_button.configure(state="normal")
                 if payload.status == RunStatus.FAILED:
                     messagebox.showerror("SOP Reporter failed", payload.message, parent=self.root)
+            elif event == "update_checked" and isinstance(payload, tuple):
+                self._on_update_checked(*payload)
+            elif event == "update_error" and isinstance(payload, tuple):
+                self._on_update_error(*payload)
+            elif event == "update_progress" and isinstance(payload, tuple):
+                version, percent = payload
+                self.update_status.set(f"Downloading version {version}… {percent}%")
+            elif event == "update_installed":
+                version = getattr(payload, "version", "")
+                self.update_status.set(
+                    f"Version {version} installed. Restarting SOP Reporter…"
+                )
+                self._exit_callback()
         if self.root.winfo_exists():
             self.root.after(150, self._drain_events)
 

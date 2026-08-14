@@ -84,6 +84,22 @@ Check the printer queue and generated report before changing state. If a qualifi
 - Confirm **Start in** is the folder containing `SOPReporter.exe`.
 - Check `sop_reporter.log` under the executable folder or `%APPDATA%\SOPReporter\logs`.
 
+## Updating from the desktop
+
+Use **Check for Updates**, in the tray menu or at the bottom of the control window. If a newer build exists, **Install and Restart** downloads it, swaps it in, and relaunches SOP Reporter.
+
+The swap works by renaming: Windows refuses to overwrite a running executable but does allow it to be renamed, so the outgoing build is moved aside to `SOPReporter.previous-<version>.exe` and deleted on the next start. If you ever need to go back, exit SOP Reporter, delete `SOPReporter.exe`, and rename that file back.
+
+Things that stop an update:
+
+- **"running from source"** — self-update applies only to the packaged `SOPReporter.exe`, not to `python -m sop_reporter.main`.
+- **"the folder holding SOPReporter.exe is not writable"** — the application is somewhere locked down such as `Program Files`. Move it to a writable location such as the Desktop. Note that this is separate from where settings and logs live; those already fall back to `%APPDATA%\SOPReporter`.
+- **"No published release was found"** — no GitHub release exists yet with `SOPReporter.exe` attached. Push a `v*` tag to build and publish one.
+- **"GitHub is rate limiting update checks"** — anonymous GitHub API calls are capped per hour. Wait and try again.
+- **A run is in progress** — updating is refused mid-run so a report is never interrupted halfway. Wait for the run to finish.
+
+If the new build does not reappear after an update, start it from its shortcut. The relaunched process waits up to 45 seconds for the outgoing one to exit before claiming the single-instance lock, so a slow exit delays rather than blocks it.
+
 ## Runtime files moved to AppData
 
 If the executable folder is not writable, SOP Reporter stores editable configuration, logs, state, downloads, and reports under `%APPDATA%\SOPReporter`. This is expected for locations such as `Program Files`.

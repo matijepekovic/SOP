@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -22,6 +26,18 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $version = python -c "import sop_reporter; print(sop_reporter.__version__)"
+          Write-Host "Tag version: $tag / package version: $version"
+          if ($tag -ne $version) {
+            Write-Error "Tag $tag does not match sop_reporter.__version__ $version. The desktop updater compares these, so they must agree."
+            exit 1
+          }
+
       - name: Build console debug executable
         run: python -m PyInstaller --noconfirm --clean build/sop_reporter_debug.spec
 
@@ -36,3 +52,16 @@ jobs:
             dist/SOPReporter-Debug.exe
             dist/SOPReporter.exe
           if-no-files-found: error
+
+      # Publishing the release is what makes the in-app "Check for Updates"
+      # button find a new build: the updater reads the latest release and
+      # downloads the SOPReporter.exe asset attached here.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/SOPReporter.exe
+            dist/SOPReporter-Debug.exe
+          generate_release_notes: true
+          fail_on_unmatched_files: true

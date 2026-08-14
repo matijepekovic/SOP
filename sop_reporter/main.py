@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
+from sop_reporter import __version__
 from sop_reporter.config import (
     load_app_config,
     load_extraction_config,
@@ -21,6 +23,7 @@ from sop_reporter.scheduler import JobScheduler
 from sop_reporter.single_instance import AlreadyRunningError, SingleInstance
 from sop_reporter.state_store import ProcessedStateStore
 from sop_reporter.tray import TrayApp
+from sop_reporter.updater import RELAUNCH_FLAG, Updater
 
 
 LOGGER = logging.getLogger(__name__)
@@ -83,7 +86,10 @@ def main() -> int:
         paths = AppPaths.discover()
         paths.ensure_layout()
         log_path = setup_logging(paths.logs_dir)
-        instance = SingleInstance.acquire()
+        # A build started by a self-update waits for the outgoing process to
+        # release the single-instance mutex before claiming it.
+        relaunched = RELAUNCH_FLAG in sys.argv[1:]
+        instance = SingleInstance.acquire(wait_seconds=45.0 if relaunched else 0.0)
 
         initial_config = load_app_config(paths.app_config_path)
         log_path = setup_logging(
@@ -92,8 +98,24 @@ def main() -> int:
             max_bytes=initial_config.logging.max_bytes,
             backup_count=initial_config.logging.backup_count,
         )
-        LOGGER.info("Starting SOP Reporter from %s", paths.runtime_root)
+        LOGGER.info(
+            "Starting SOP Reporter %s from %s", __version__, paths.runtime_root
+        )
         runner, app_config = _build_runner(paths)
+
+        updater: Updater | None = None
+        if app_config.update.enabled:
+            updater = Updater(
+                repository=app_config.update.repository,
+                current_version=__version__,
+                include_prereleases=app_config.update.include_prereleases,
+            )
+            # Clear the build the previous update renamed aside; it is
+            # unlocked now that the older process has exited.
+            try:
+                updater.cleanup_previous_builds()
+            except Exception:
+                LOGGER.debug("Could not clean up superseded builds", exc_info=True)
 
         scheduler = JobScheduler(
             app_config.schedule,
@@ -111,6 +133,11 @@ def main() -> int:
             extraction_config_path=paths.extraction_config_path,
             logs_dir=paths.logs_dir,
             reports_dir=reports_dir,
+            updater=updater,
+            current_version=__version__,
+            check_updates_on_startup=(
+                updater is not None and app_config.update.check_on_startup
+            ),
         )
         scheduler.start()
         tray.run()

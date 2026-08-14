@@ -68,6 +68,29 @@ The printer name must match the name Excel shows. Excel sometimes includes a por
 
 `paper_size` is intentionally restricted to `tabloid`. Orientation may be `landscape` or `portrait`. A value of `0` for `fit_to_pages_tall` means automatic height.
 
+### Software updates
+
+```yaml
+update:
+  enabled: true
+  repository: matijepekovic/SOP
+  check_on_startup: true
+  include_prereleases: false
+```
+
+SOP Reporter can update itself from the desktop. **Check for Updates** appears both in the tray menu and in the control window, and installs a newer build in place.
+
+| Key | Meaning |
+| --- | --- |
+| `enabled` | Set to `false` to hide the update controls entirely. |
+| `repository` | The `owner/name` GitHub repository holding the published releases. |
+| `check_on_startup` | Check quietly a couple of seconds after launch. A newer version is reported in the control window; nothing is installed without a click. |
+| `include_prereleases` | Offer prerelease builds as well as final ones. |
+
+Updates come from the repository's GitHub Releases, so a release must exist with `SOPReporter.exe` attached. Pushing a `v*` tag builds and publishes one automatically; see `.github/workflows/windows-build.yml`. The tag and `sop_reporter.__version__` must match, and the workflow fails the build if they disagree, because the updater compares those two values to decide whether a build is newer.
+
+Nothing is downloaded until you press **Check for Updates**, and nothing is installed until you confirm. An update is refused while a fetch/report/print run is in progress.
+
 ## `extraction_rules.yaml`
 
 Rules are applied in this order:

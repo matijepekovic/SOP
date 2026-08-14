@@ -36,3 +36,7 @@ class PrintError(SOPReporterError):
 
 class StateStoreError(SOPReporterError):
     """Raised when deduplication state cannot be read or persisted."""
+
+
+class UpdateError(SOPReporterError):
+    """Raised when a desktop self-update cannot be checked, downloaded, or applied."""

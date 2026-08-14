@@ -51,3 +51,11 @@ logging:
 
 tray:
   tooltip: SOP Reporter
+
+update:
+  # Desktop self-update. SOP Reporter checks the repository's latest published
+  # release, and the "Check for Updates" button installs it and restarts.
+  enabled: true
+  repository: matijepekovic/SOP
+  check_on_startup: true
+  include_prereleases: false
