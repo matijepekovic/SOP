@@ -352,14 +352,36 @@ class ExtractionEngine:
                     )
                 headers[folded] = (name, index)
 
+            found = [name for name, _index in headers.values()]
+            LOGGER.info(
+                "%s sheet %r row %d headers: %s",
+                path.name,
+                worksheet.title,
+                self.config.input.header_row,
+                ", ".join(found) if found else "(none)",
+            )
+
             missing = [
                 rule.source
                 for rule in self.config.columns
                 if rule.required and rule.source.casefold() not in headers
             ]
             if missing:
+                # Report what the workbook actually contains. Without this the
+                # error only says what was wanted, which is a dead end when the
+                # rules were written against a different report or the header
+                # sits on another row.
+                detail = ", ".join(found) if found else "(no non-blank cells)"
                 raise ExtractionError(
-                    f"Workbook {path.name} is missing required column(s): {', '.join(missing)}"
+                    f"Workbook {path.name} is missing required column(s): "
+                    f"{', '.join(missing)}. "
+                    f"Row {self.config.input.header_row} of sheet "
+                    f"{worksheet.title!r} actually contains: {detail}. "
+                    f"Sheets in this workbook: {', '.join(workbook.sheetnames)}. "
+                    "Adjust input.header_row, input.sheet_name, or the column "
+                    "sources in extraction_rules.yaml, or narrow "
+                    "email.attachments.filename_patterns so only the intended "
+                    "report is processed."
                 )
 
             known_filter_columns = set(headers)

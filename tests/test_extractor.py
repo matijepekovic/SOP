@@ -16,6 +16,7 @@ from sop_reporter.config import (
     SplitConfig,
     load_extraction_config,
 )
+from sop_reporter.exceptions import ExtractionError
 from sop_reporter.extractor import ExtractionEngine
 from tests.fixtures.make_sample_xlsx import make_sample_workbook
 from tests.fixtures.make_salesforce_sample_xlsx import (
@@ -64,6 +65,22 @@ class ExtractionEngineTests(unittest.TestCase):
         )
         data = ExtractionEngine(config).extract_file(self.workbook_path)
         return [row["Job"] for row in data.rows]
+
+    def test_missing_column_error_reports_the_headers_actually_present(self) -> None:
+        config = replace(
+            self.base_config,
+            columns=(ColumnRule("Nonexistent Column", "Whatever", "text"),),
+        )
+        with self.assertRaises(ExtractionError) as caught:
+            ExtractionEngine(config).extract_file(self.workbook_path)
+        message = str(caught.exception)
+        # Names what was wanted...
+        self.assertIn("Nonexistent Column", message)
+        # ...and what the sheet actually has, so the log alone is enough to fix
+        # the rules without opening the workbook.
+        self.assertIn("Sales Rep", message)
+        self.assertIn("Job Number", message)
+        self.assertIn("Data", message)
 
     def test_column_rename_and_type_conversion(self) -> None:
         data = ExtractionEngine(self.base_config).extract_file(self.workbook_path)
