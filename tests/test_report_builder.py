@@ -54,7 +54,7 @@ class ReportBuilderTests(unittest.TestCase):
             self.assertEqual(worksheet.page_setup.paperSize, 3)
             self.assertEqual(worksheet.page_setup.orientation, "landscape")
             self.assertEqual(worksheet.page_setup.fitToWidth, 1)
-            self.assertEqual(worksheet.auto_filter.ref, "A4:I7")
+            self.assertEqual(worksheet.auto_filter.ref, "A4:K7")
             workbook.close()
 
 
