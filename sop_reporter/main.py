@@ -108,6 +108,7 @@ def main() -> int:
             tooltip=app_config.tray.tooltip,
             icon_path=paths.default_icon_path,
             config_path=paths.config_dir,
+            extraction_config_path=paths.extraction_config_path,
             logs_dir=paths.logs_dir,
             reports_dir=reports_dir,
         )

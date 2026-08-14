@@ -6,8 +6,10 @@ email:
   imap_port: 993
   mailbox: INBOX
   search:
-    from: "reports@example.com"
-    subject_contains: "Daily SOP"
+    # Leave blank during setup so test messages are visible. Narrow these after
+    # confirming the full Gmail-to-report pipeline works.
+    from: ""
+    subject_contains: ""
     since_days: 14
     unread_only: false
   attachments:

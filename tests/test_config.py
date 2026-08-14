@@ -18,6 +18,8 @@ class ConfigurationTests(unittest.TestCase):
             PROJECT_ROOT / "config" / "extraction_rules.default.yaml"
         )
         self.assertEqual(app.schedule.time, "07:00")
+        self.assertEqual(app.email.search.sender, "")
+        self.assertEqual(app.email.search.subject_contains, "")
         self.assertEqual(app.schedule.days[:2], ("monday", "tuesday"))
         self.assertEqual(app.printer.paper_size, "tabloid")
         self.assertIsNone(extraction.input.sheet_name)

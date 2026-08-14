@@ -1,2 +1,0 @@
-"""Synthetic test data helpers."""
-

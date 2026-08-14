@@ -24,6 +24,7 @@ class TrayApp:
         tooltip: str,
         icon_path: Path,
         config_path: Path,
+        extraction_config_path: Path,
         logs_dir: Path,
         reports_dir: Path,
     ) -> None:
@@ -32,6 +33,7 @@ class TrayApp:
         self.tooltip = tooltip
         self.icon_path = icon_path
         self.config_path = config_path
+        self.extraction_config_path = extraction_config_path
         self.logs_dir = logs_dir
         self.reports_dir = reports_dir
         self._icon: Any | None = None
@@ -45,7 +47,8 @@ class TrayApp:
             ) from exc
 
         menu = pystray.Menu(
-            pystray.MenuItem("Run Now", self._run_now, default=True),
+            pystray.MenuItem("Open SOP Reporter", self._show_control_window, default=True),
+            pystray.MenuItem("Run Now", self._run_now),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open Reports", self._open_reports),
             pystray.MenuItem("Open Settings", self._open_settings),
@@ -60,7 +63,25 @@ class TrayApp:
             menu,
         )
         LOGGER.info("Tray application started")
-        self._icon.run()
+        self._icon.run_detached()
+
+        from sop_reporter.gui.control_window import ControlWindow
+
+        self._control_window = ControlWindow(
+            job_runner=self.job_runner,
+            run_now=self._run_now,
+            exit_app=self._exit,
+            app_config_path=self.config_path / "app_config.yaml",
+            extraction_config_path=self.extraction_config_path,
+            reports_dir=self.reports_dir,
+            logs_dir=self.logs_dir,
+        )
+        self._control_window.run()
+
+    def _show_control_window(self, _icon=None, _item=None) -> None:
+        window = getattr(self, "_control_window", None)
+        if window is not None:
+            window.show()
 
     def _load_icon(self) -> Image.Image:
         try:
@@ -82,6 +103,9 @@ class TrayApp:
         ).start()
 
     def _run_now_worker(self) -> None:
+        window = getattr(self, "_control_window", None)
+        if window is not None:
+            window.set_running()
         result = self.job_runner.run_once(trigger="manual")
         if result.status == RunStatus.FAILED:
             title = "SOP Reporter failed"
@@ -90,6 +114,8 @@ class TrayApp:
         else:
             title = "SOP Reporter"
         self._notify(result.message, title)
+        if window is not None:
+            window.set_result(result)
 
     def _notify(self, message: str, title: str) -> None:
         try:
@@ -137,3 +163,6 @@ class TrayApp:
         active_icon = icon or self._icon
         if active_icon is not None:
             active_icon.stop()
+        window = getattr(self, "_control_window", None)
+        if window is not None:
+            window.close()

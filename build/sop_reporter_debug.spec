@@ -16,6 +16,8 @@ hiddenimports = [
     "tkinter",
     "tkinter.messagebox",
     "tkinter.ttk",
+    # Imported lazily inside TrayApp.run(), so static analysis can miss it.
+    "sop_reporter.gui.control_window",
 ]
 
 datas = [

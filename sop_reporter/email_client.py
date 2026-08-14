@@ -82,6 +82,18 @@ class GmailIMAPClient:
             criteria.append("UNSEEN")
         return tuple(criteria)
 
+    def build_gmail_raw_query(self) -> str:
+        parts = [f"newer_than:{self.config.search.since_days}d"]
+        if self.config.search.sender:
+            parts.append(f'from:("{_quote_search_value(self.config.search.sender)}")')
+        if self.config.search.subject_contains:
+            parts.append(
+                f'subject:("{_quote_search_value(self.config.search.subject_contains)}")'
+            )
+        if self.config.search.unread_only:
+            parts.append("is:unread")
+        return " ".join(parts)
+
     def fetch_messages(
         self,
         download_dir: Path,
@@ -102,19 +114,73 @@ class GmailIMAPClient:
             status, _ = connection.login(self.account, self._app_password)
             if status != "OK":
                 raise EmailClientError("Gmail rejected the IMAP login")
-            status, _ = connection.select(self.config.mailbox, readonly=True)
+            status, select_data = connection.select(self.config.mailbox, readonly=True)
             if status != "OK":
                 raise EmailClientError(
                     f"Gmail mailbox could not be opened: {self.config.mailbox}"
                 )
             selected = True
 
+            mailbox_count = "unknown"
+            if select_data and select_data[0] is not None:
+                raw_count = select_data[0]
+                mailbox_count = (
+                    raw_count.decode("ascii", errors="replace")
+                    if isinstance(raw_count, bytes)
+                    else str(raw_count)
+                )
+            criteria = self.build_search_criteria(today=today)
+            LOGGER.info(
+                "Gmail account %s mailbox %s reports %s total message(s); search=%s",
+                self.account,
+                self.config.mailbox,
+                mailbox_count,
+                " ".join(criteria),
+            )
+
             status, search_data = connection.search(
-                None, *self.build_search_criteria(today=today)
+                None, *criteria
             )
             if status != "OK":
                 raise EmailClientError("Gmail IMAP search failed")
             sequence_ids = search_data[0].split() if search_data and search_data[0] else []
+
+            # Gmail occasionally returns an empty result for a valid RFC IMAP
+            # SINCE search even while the web Inbox visibly contains mail. Retry
+            # using Gmail's native search extension before declaring the Inbox empty.
+            if not sequence_ids:
+                raw_query = self.build_gmail_raw_query()
+                LOGGER.warning(
+                    "Standard Gmail IMAP search returned zero; retrying with X-GM-RAW %s",
+                    raw_query,
+                )
+                status, search_data = connection.search(
+                    None,
+                    "X-GM-RAW",
+                    f'"{raw_query}"',
+                )
+                if status != "OK":
+                    raise EmailClientError("Gmail native search failed")
+                sequence_ids = (
+                    search_data[0].split() if search_data and search_data[0] else []
+                )
+
+            # During setup, blank sender/subject filters mean "show me the Inbox."
+            # If both date-search forms fail, inspect the latest messages directly.
+            if (
+                not sequence_ids
+                and not self.config.search.sender
+                and not self.config.search.subject_contains
+                and not self.config.search.unread_only
+            ):
+                LOGGER.warning(
+                    "Both date searches returned zero; falling back to latest Inbox messages"
+                )
+                status, search_data = connection.search(None, "ALL")
+                if status != "OK":
+                    raise EmailClientError("Gmail ALL fallback search failed")
+                all_ids = search_data[0].split() if search_data and search_data[0] else []
+                sequence_ids = all_ids[-250:]
             LOGGER.info("Gmail search returned %d message(s)", len(sequence_ids))
 
             for raw_sequence_id in sequence_ids:
@@ -232,4 +298,3 @@ class GmailIMAPClient:
             )
             LOGGER.info("Downloaded attachment %s", filename)
         return downloaded
-

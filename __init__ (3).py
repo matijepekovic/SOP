@@ -1,2 +1,0 @@
-"""SOP Reporter unit tests."""
-

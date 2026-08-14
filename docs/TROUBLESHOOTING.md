@@ -46,6 +46,30 @@ Passwords are not written to logs.
 
 SOP Reporter never attaches to the user's already-open Excel window. It creates a separate hidden instance and closes only that instance.
 
+## The printer asks for a Department Name and Password
+
+Konica Minolta devices such as the C360i series can be configured with **User Authentication / Account Track**. When that is enabled, the driver raises a modal dialog asking for a Department Name and Password on every print job.
+
+Entering the credentials in that popup is enough for a print you start by hand, but it will stall the scheduled 7:00 AM run: the dialog waits for a person who is not there, and the job never reaches the printer. The credentials have to be saved into the driver instead, so no dialog is raised at all.
+
+Save them in **both** places, because they are stored separately:
+
+1. **Printing Defaults** — this is the one that matters for scheduled runs, because it supplies the values to jobs that Excel spawns through COM automation.
+   - Control Panel > Devices and Printers
+   - Right-click the Konica Minolta printer > **Printer properties**
+   - **Advanced** tab > **Printing Defaults...**
+   - Open the **User Authentication/Account Track** settings
+   - Leave **Department Name** blank, enter the account password (for example `0000`), and confirm with **Verify** if the driver offers it
+   - Disable any "prompt for credentials" or "display dialog on each job" option
+2. **Printing Preferences** — the per-user copy, used when someone prints interactively.
+   - Same printer > **Printing preferences** > repeat the same entries
+
+Then confirm it worked:
+
+- Set `printer.enabled: true` and leave `printer.name` blank (or set it to the exact label Excel shows).
+- Use the tray **Run Now** action, then step away from the keyboard. If the report reaches the printer with no dialog appearing, unattended printing is correctly configured.
+- If a dialog still appears, the driver saved the credentials only to the interactive profile. Re-check the **Printing Defaults** path above, which is the copy the automated run reads.
+
 ## An uncertain print is not retried
 
 SOP Reporter claims an email in `state.json` immediately before asking Excel to print. If Excel definitely fails before `PrintOut`, the claim is released. If Excel accepts `PrintOut` and then returns an error, or the PC shuts down during printing, SOP Reporter keeps the claim so the same email cannot print twice.
