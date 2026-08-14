@@ -21,8 +21,7 @@ version: 1
 input:
   # null uses the workbook's active worksheet.
   sheet_name: null
-  header_row: 1
-  data_start_row: 2
+  header_row: auto
   stop_at_first_blank_row: false
   skip_blank_rows: true
 

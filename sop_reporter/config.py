@@ -188,8 +188,15 @@ class AppConfig:
 @dataclass(frozen=True)
 class InputConfig:
     sheet_name: str | None
+    # 0 means "locate the header row automatically" (header_row: auto).
+    # Exports that begin with title or filter rows shift the header down, and
+    # the offset is not stable between runs.
     header_row: int
     data_start_row: int
+
+    @property
+    def auto_header(self) -> bool:
+        return self.header_row == 0
     stop_at_first_blank_row: bool
     skip_blank_rows: bool
 
@@ -496,12 +503,31 @@ def extraction_config_from_mapping(root: Mapping[str, Any]) -> ExtractionConfig:
         raise ConfigurationError(f"Unsupported extraction config version: {version}")
 
     input_data = _mapping(root.get("input", {}), "input")
-    header_row = _positive_int(input_data.get("header_row", 1), "input.header_row")
-    data_start_row = _positive_int(
-        input_data.get("data_start_row", header_row + 1), "input.data_start_row"
-    )
-    if data_start_row <= header_row:
-        raise ConfigurationError("input.data_start_row must be after input.header_row")
+    raw_header_row = input_data.get("header_row", 1)
+    if isinstance(raw_header_row, str) and raw_header_row.strip().casefold() == "auto":
+        header_row = 0
+    else:
+        header_row = _positive_int(raw_header_row, "input.header_row")
+
+    raw_data_start = input_data.get("data_start_row")
+    if header_row == 0:
+        # Data begins on the row after whichever row is detected, so an
+        # explicit data_start_row would contradict the detection.
+        if raw_data_start is not None:
+            raise ConfigurationError(
+                "input.data_start_row cannot be set when input.header_row is auto; "
+                "data starts on the row after the detected header"
+            )
+        data_start_row = 0
+    else:
+        data_start_row = _positive_int(
+            raw_data_start if raw_data_start is not None else header_row + 1,
+            "input.data_start_row",
+        )
+        if data_start_row <= header_row:
+            raise ConfigurationError(
+                "input.data_start_row must be after input.header_row"
+            )
     raw_sheet_name = input_data.get("sheet_name")
     input_config = InputConfig(
         sheet_name=str(raw_sheet_name).strip() if raw_sheet_name not in {None, ""} else None,

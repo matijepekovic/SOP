@@ -315,6 +315,116 @@ class ExtractionEngine:
             mapped_rows.extend(self._read_mapped_rows(path))
         return mapped_rows
 
+    HEADER_SCAN_ROWS = 25
+
+    def can_handle(self, path: Path) -> bool:
+        """Whether this report's required columns exist in ``path``.
+
+        Lets a workbook be identified by what is inside it rather than by its
+        filename, which matters because the sending system's filenames are not
+        stable.
+        """
+        if path.suffix.casefold() not in {".xlsx", ".xlsm"}:
+            return False
+        required = {
+            rule.source.casefold() for rule in self.config.columns if rule.required
+        }
+        if not required:
+            return False
+        try:
+            workbook = load_workbook(
+                path, read_only=True, data_only=True, keep_links=False
+            )
+        except Exception:
+            return False
+        try:
+            worksheet = self._select_worksheet(workbook, path)
+            _row, values = self._locate_header_row(worksheet, path)
+        except ExtractionError:
+            return False
+        finally:
+            workbook.close()
+        present = {
+            str(value).strip().casefold() for value in values if not _is_blank(value)
+        }
+        return required.issubset(present)
+
+    def _locate_header_row(self, worksheet, path: Path) -> tuple[int, tuple]:
+        """Return the header row number and its cell values.
+
+        With an explicit ``input.header_row`` this just reads that row. With
+        ``header_row: auto`` it scans the top of the sheet and picks the row
+        matching the most configured source columns, which is what exports
+        that begin with title or filter rows need.
+        """
+        configured = self.config.input.header_row
+        if configured:
+            values = next(
+                worksheet.iter_rows(
+                    min_row=configured, max_row=configured, values_only=True
+                ),
+                (),
+            )
+            return configured, values
+
+        wanted = {rule.source.casefold() for rule in self.config.columns}
+        required = {
+            rule.source.casefold() for rule in self.config.columns if rule.required
+        }
+        best_row = 0
+        best_values: tuple = ()
+        best_score = 0
+        scanned: list[str] = []
+
+        for row_number, values in enumerate(
+            worksheet.iter_rows(
+                min_row=1, max_row=self.HEADER_SCAN_ROWS, values_only=True
+            ),
+            start=1,
+        ):
+            labels = {
+                str(value).strip().casefold()
+                for value in values
+                if not _is_blank(value)
+            }
+            if labels:
+                preview = ", ".join(
+                    str(v).strip() for v in values if not _is_blank(v)
+                )
+                scanned.append(f"row {row_number}: {preview[:160]}")
+            score = len(labels & wanted)
+            if score > best_score:
+                best_score, best_row, best_values = score, row_number, values
+
+        # Require every mandatory column, so a stray row that happens to echo
+        # one or two column names is never mistaken for the header.
+        if best_row and required:
+            found = {
+                str(v).strip().casefold() for v in best_values if not _is_blank(v)
+            }
+            if not required.issubset(found):
+                best_row = 0
+
+        if not best_row:
+            detail = "; ".join(scanned) if scanned else "(all scanned rows are blank)"
+            raise ExtractionError(
+                f"Could not find the header row in {path.name} sheet "
+                f"{worksheet.title!r}. Looked for columns "
+                f"{', '.join(sorted(rule.source for rule in self.config.columns if rule.required))} "
+                f"in the first {self.HEADER_SCAN_ROWS} rows. "
+                f"Rows seen: {detail}. "
+                "Set input.header_row to the correct row number, or correct the "
+                "column sources, in this report's rules file."
+            )
+
+        LOGGER.info(
+            "%s: detected header on row %d of sheet %r",
+            path.name,
+            best_row,
+            worksheet.title,
+        )
+        return best_row, best_values
+
     def _read_mapped_rows(self, path: Path) -> list[dict[str, Any]]:
         if path.suffix.casefold() not in {".xlsx", ".xlsm"}:
             raise ExtractionError(
@@ -332,14 +442,8 @@ class ExtractionEngine:
 
         try:
             worksheet = self._select_worksheet(workbook, path)
-            header_values = next(
-                worksheet.iter_rows(
-                    min_row=self.config.input.header_row,
-                    max_row=self.config.input.header_row,
-                    values_only=True,
-                ),
-                (),
-            )
+            header_row, header_values = self._locate_header_row(worksheet, path)
+            data_start_row = self.config.input.data_start_row or header_row + 1
             headers: dict[str, tuple[str, int]] = {}
             for index, value in enumerate(header_values):
                 if _is_blank(value):
@@ -348,7 +452,7 @@ class ExtractionEngine:
                 folded = name.casefold()
                 if folded in headers:
                     raise ExtractionError(
-                        f"Duplicate header '{name}' in {path.name} row {self.config.input.header_row}"
+                        f"Duplicate header '{name}' in {path.name} row {header_row}"
                     )
                 headers[folded] = (name, index)
 
@@ -357,7 +461,7 @@ class ExtractionEngine:
                 "%s sheet %r row %d headers: %s",
                 path.name,
                 worksheet.title,
-                self.config.input.header_row,
+                header_row,
                 ", ".join(found) if found else "(none)",
             )
 
@@ -375,7 +479,7 @@ class ExtractionEngine:
                 raise ExtractionError(
                     f"Workbook {path.name} is missing required column(s): "
                     f"{', '.join(missing)}. "
-                    f"Row {self.config.input.header_row} of sheet "
+                    f"Row {header_row} of sheet "
                     f"{worksheet.title!r} actually contains: {detail}. "
                     f"Sheets in this workbook: {', '.join(workbook.sheetnames)}. "
                     "Adjust input.header_row, input.sheet_name, or the column "
@@ -400,10 +504,10 @@ class ExtractionEngine:
             fill_down_values: dict[str, Any] = {}
             for row_number, values in enumerate(
                 worksheet.iter_rows(
-                    min_row=self.config.input.data_start_row,
+                    min_row=data_start_row,
                     values_only=True,
                 ),
-                start=self.config.input.data_start_row,
+                start=data_start_row,
             ):
                 if all(_is_blank(value) for value in values):
                     if self.config.input.stop_at_first_blank_row:

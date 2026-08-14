@@ -245,23 +245,46 @@ class JobRunner:
         """Assign each attachment to the first report definition that claims it."""
         routed: dict[str, list[DownloadedAttachment]] = {}
         for attachment in attachments:
-            for job in self.jobs:
-                if job.definition.match.matches(attachment.original_filename):
-                    routed.setdefault(job.name, []).append(attachment)
-                    LOGGER.info(
-                        "Attachment %s routed to report %r",
-                        attachment.original_filename,
-                        job.name,
-                    )
-                    break
-            else:
+            job, how = self._match_attachment(attachment)
+            if job is None:
                 # Not an error: mailboxes carry unrelated spreadsheets, and a
                 # report can be deliberately disabled while it is configured.
                 LOGGER.info(
                     "Attachment %s matched no enabled report and was skipped",
                     attachment.original_filename,
                 )
+                continue
+            routed.setdefault(job.name, []).append(attachment)
+            LOGGER.info(
+                "Attachment %s routed to report %r by %s",
+                attachment.original_filename,
+                job.name,
+                how,
+            )
         return routed
+
+    def _match_attachment(
+        self, attachment: DownloadedAttachment
+    ) -> tuple[ReportJob | None, str]:
+        for job in self.jobs:
+            if job.definition.match.matches(attachment.original_filename):
+                return job, "filename"
+        # The sending system's filenames are not stable, so fall back to
+        # identifying the report by the columns the workbook actually contains.
+        for job in self.jobs:
+            if not job.definition.match.enabled:
+                continue
+            try:
+                if job.extractor.can_handle(attachment.path):
+                    return job, "columns"
+            except Exception:
+                LOGGER.debug(
+                    "Report %r could not inspect %s",
+                    job.name,
+                    attachment.original_filename,
+                    exc_info=True,
+                )
+        return None, ""
 
     def _build_reports_for(
         self,

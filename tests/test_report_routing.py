@@ -369,3 +369,93 @@ class DefinitionLoadingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContentMatchingTests(unittest.TestCase):
+    """Filenames from the sending system are not stable, so a report must be
+    identifiable by the columns its workbook contains."""
+
+    def _workbook(self, root: Path, name: str, *, lead_rows: int) -> Path:
+        from openpyxl import Workbook, load_workbook
+
+        source = load_workbook(
+            PROJECT_ROOT / "tests" / "fixtures" / "salesforce_olympia_sample.xlsx"
+        )
+        rows = list(source.active.iter_rows(values_only=True))
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "GM SOP"
+        for index in range(lead_rows):
+            # Title and filter banners of the kind report exports put above
+            # the real header row.
+            sheet.append(["GM SOP Report"] if index == 1 else [])
+        for row in rows:
+            sheet.append(list(row))
+        path = root / name
+        workbook.save(path)
+        return path
+
+    def _gm_job(self, *, patterns=("GM SOP*.xlsx",)):
+        from sop_reporter.extractor import ExtractionEngine
+
+        definition = {
+            d.name: d for d in load_report_definitions(PROJECT_ROOT / "config")
+        }["GM SOP"]
+        return make_job(
+            "GM SOP",
+            ExtractionEngine(definition.extraction),
+            patterns=patterns,
+        )
+
+    def test_header_below_blank_and_title_rows_is_found(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self._workbook(root, "GM SOP-1.xlsx", lead_rows=4)
+            job = self._gm_job()
+
+            partitions = job.extractor.extract_partitions([path])
+
+            self.assertEqual(
+                [p.label for p in partitions],
+                ["Item Notification", "Install Issue", "On Hold"],
+            )
+
+    def test_unrecognizable_filename_still_routes_by_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # Nothing about this name matches the configured patterns.
+            path = self._workbook(root, "d080ccd547be_01_export.xlsx", lead_rows=4)
+            record = EmailRecord(
+                sequence_id="1",
+                message_id="<one@example>",
+                subject="SOP",
+                sender="reports@example.com",
+                sent_date="Thu, 13 Aug 2026 07:00:00 -0700",
+                attachments=(
+                    DownloadedAttachment(
+                        "d080ccd547be_01_export.xlsx",
+                        path,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        5,
+                    ),
+                ),
+            )
+            printer = FakePrinter()
+            runner, _ = _runner(root, record, [self._gm_job()], printer)
+
+            result = runner.run_once()
+
+            self.assertEqual(result.status, RunStatus.SUCCESS)
+            self.assertEqual(len(printer.printed), 3)
+
+    def test_a_workbook_without_the_columns_is_not_claimed(self) -> None:
+        from openpyxl import Workbook
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workbook = Workbook()
+            workbook.active.append(["Something", "Entirely", "Different"])
+            path = root / "mystery.xlsx"
+            workbook.save(path)
+
+            self.assertFalse(self._gm_job().extractor.can_handle(path))
