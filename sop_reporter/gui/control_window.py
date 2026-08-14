@@ -61,6 +61,7 @@ class ControlWindow:
         self.schedule_enabled = tk.BooleanVar()
         self.schedule_time = tk.StringVar()
         self.printer_enabled = tk.BooleanVar()
+        self.printer_output = tk.StringVar()
         self.printer_name = tk.StringVar()
         self.status = tk.StringVar(value="Ready")
         self.update_status = tk.StringVar(
@@ -116,11 +117,19 @@ class ControlWindow:
 
         printer = ttk.LabelFrame(outer, text="Printing", padding=12)
         printer.pack(fill="x", pady=(0, 12))
-        ttk.Checkbutton(printer, text="Print automatically", variable=self.printer_enabled).grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Checkbutton(printer, text="Send output automatically", variable=self.printer_enabled).grid(row=0, column=0, sticky="w", pady=4)
+        output_row = ttk.Frame(printer)
+        output_row.grid(row=0, column=1, sticky="w", padx=(12, 0))
+        ttk.Radiobutton(
+            output_row, text="Save as PDF", variable=self.printer_output, value="pdf"
+        ).pack(side="left")
+        ttk.Radiobutton(
+            output_row, text="Send to printer", variable=self.printer_output, value="printer"
+        ).pack(side="left", padx=(12, 0))
         ttk.Label(printer, text="Excel printer name").grid(row=1, column=0, sticky="w", pady=4)
         ttk.Entry(printer, textvariable=self.printer_name).grid(row=1, column=1, sticky="ew", padx=(12, 0), pady=4)
         printer.columnconfigure(1, weight=1)
-        ttk.Label(printer, text="Blank uses the Windows default printer. Output is forced to 17×11 landscape.", foreground="#555555").grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(printer, text="PDFs are saved next to the reports, laid out exactly as they would print. Blank printer name uses the Windows default. Output is forced to 17×11 landscape either way.", foreground="#555555", wraplength=620).grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
         updates = ttk.LabelFrame(outer, text="Software updates", padding=12)
         updates.pack(fill="x", pady=(0, 12))
@@ -180,6 +189,7 @@ class ControlWindow:
         self.schedule_enabled.set(bool(schedule.get("enabled", True)))
         self.schedule_time.set(str(schedule.get("time", "07:00")))
         self.printer_enabled.set(bool(printer.get("enabled", True)))
+        self.printer_output.set(str(printer.get("output", "printer")))
         self.printer_name.set(str(printer.get("name", "")))
 
     def _save(self) -> None:
@@ -211,6 +221,7 @@ class ControlWindow:
         schedule["time"] = time_value
         printer = data.setdefault("printer", {})
         printer["enabled"] = self.printer_enabled.get()
+        printer["output"] = self.printer_output.get() or "printer"
         printer["name"] = self.printer_name.get().strip()
 
         temporary = self.app_config_path.with_suffix(".yaml.tmp")

@@ -145,6 +145,9 @@ class OutputConfig:
 @dataclass(frozen=True)
 class PrinterConfig:
     enabled: bool
+    # "printer" sends the job to Excel's printer; "pdf" saves a PDF beside the
+    # report using the identical Tabloid page setup.
+    output: str
     name: str
     paper_size: str
     orientation: str
@@ -193,12 +196,12 @@ class InputConfig:
     # the offset is not stable between runs.
     header_row: int
     data_start_row: int
+    stop_at_first_blank_row: bool
+    skip_blank_rows: bool
 
     @property
     def auto_header(self) -> bool:
         return self.header_row == 0
-    stop_at_first_blank_row: bool
-    skip_blank_rows: bool
 
 
 @dataclass(frozen=True)
@@ -398,8 +401,12 @@ def load_app_config(path: Path) -> AppConfig:
         raise ConfigurationError("printer.paper_size currently supports only 'tabloid'")
     if orientation not in {"landscape", "portrait"}:
         raise ConfigurationError("printer.orientation must be landscape or portrait")
+    printer_output = str(printer_data.get("output", "printer")).strip().casefold()
+    if printer_output not in {"printer", "pdf"}:
+        raise ConfigurationError("printer.output must be 'printer' or 'pdf'")
     printer = PrinterConfig(
         enabled=bool(printer_data.get("enabled", True)),
+        output=printer_output,
         name=str(printer_data.get("name", "")).strip(),
         paper_size=paper_size,
         orientation=orientation,

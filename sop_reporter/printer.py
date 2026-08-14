@@ -17,6 +17,7 @@ LOGGER = logging.getLogger(__name__)
 # Raw Excel constants are intentional. Frozen one-file applications cannot rely
 # on win32com's generated constants/type-library cache being writable.
 XL_PAPER_TABLOID = 3
+XL_TYPE_PDF = 0
 XL_PORTRAIT = 1
 XL_LANDSCAPE = 2
 
@@ -125,17 +126,29 @@ class ExcelPrinter:
                     else self.config.fit_to_pages_tall
                 )
 
-            print_arguments: dict[str, Any] = {"Copies": self.config.copies}
-            if self.config.name:
-                print_arguments["ActivePrinter"] = self.config.name
-            print_invoked = True
-            workbook.PrintOut(**print_arguments)
-            LOGGER.info(
-                "Printed %s on Tabloid %s%s",
-                workbook_path.name,
-                self.config.orientation,
-                f" using {self.config.name}" if self.config.name else "",
-            )
+            if self.config.output == "pdf":
+                # Same page setup as printing, so the PDF is a faithful preview
+                # of the sheet of paper rather than a differently laid out file.
+                pdf_path = workbook_path.with_suffix(".pdf")
+                print_invoked = True
+                workbook.ExportAsFixedFormat(
+                    Type=XL_TYPE_PDF, Filename=str(pdf_path), OpenAfterPublish=False
+                )
+                LOGGER.info(
+                    "Saved %s as Tabloid %s PDF", pdf_path.name, self.config.orientation
+                )
+            else:
+                print_arguments: dict[str, Any] = {"Copies": self.config.copies}
+                if self.config.name:
+                    print_arguments["ActivePrinter"] = self.config.name
+                print_invoked = True
+                workbook.PrintOut(**print_arguments)
+                LOGGER.info(
+                    "Printed %s on Tabloid %s%s",
+                    workbook_path.name,
+                    self.config.orientation,
+                    f" using {self.config.name}" if self.config.name else "",
+                )
         except Exception as exc:
             raise PrintError(
                 f"Excel could not print {workbook_path.name}: {exc}",

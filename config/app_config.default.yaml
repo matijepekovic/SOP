@@ -35,6 +35,10 @@ output:
 
 printer:
   enabled: true
+  # "printer" sends each report to the printer.
+  # "pdf" saves a PDF next to the report instead, using the same Tabloid page
+  # setup, which is the way to preview output without using paper.
+  output: pdf
   # Leave blank to use the Windows/Excel default printer. For a named printer,
   # use the exact name Excel shows, including a port suffix if Excel includes it.
   name: ""
