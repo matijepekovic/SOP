@@ -71,20 +71,13 @@ columns:
     required: true
     number_format: mm/dd/yyyy
     width: 13
-  - source: Sales Rep 1 Name
-    target: Sales Rep 1 Name
-    type: text
-    required: true
-    width: 18
-  - source: Sales Rep 2 Name
-    target: Sales Rep 2 Name
-    type: text
-    required: true
-    width: 18
+  # This export has no sales-rep column; the assigned service resource is the
+  # equivalent it does carry. Required, so a file lacking it is rejected as the
+  # wrong report rather than printing a blank column.
   - source: 'Assigned Service Resource: Name'
     target: Assigned Resource
     type: text
-    required: false
+    required: true
     width: 22
 
 filters:
