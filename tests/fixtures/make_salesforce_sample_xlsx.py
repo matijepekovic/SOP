@@ -35,6 +35,8 @@ HEADERS = [
     "Days in Current Sub Status",
     "Close Date",
     "Assigned Service Resource: Name",
+    "Sales Rep 1 Name",
+    "Sales Rep 2 Name",
 ]
 
 ROWS = [
@@ -164,8 +166,14 @@ def make_salesforce_sample_workbook(path: Path) -> Path:
         worksheet.append(banner)
     # A leading empty column, exactly as the export produces.
     worksheet.append([None] + HEADERS)
-    for row in ROWS:
-        worksheet.append([None] + list(row))
+    # Every data row carries both rep columns, as the report variant this
+    # fixture mirrors does.
+    reps = [("Leona Miles", "Nolen Moore"), ("Jose Perez", "Jorge Sande"),
+            ("Dale Porter", "Ana Ruiz"), ("Erin Walsh", "Nolen Moore")]
+    for index, row in enumerate(ROWS):
+        padded = list(row) + [None] * (len(HEADERS) - len(row))
+        padded[-2], padded[-1] = reps[index % len(reps)]
+        worksheet.append([None] + padded)
     workbook.save(path)
     workbook.close()
     return path
