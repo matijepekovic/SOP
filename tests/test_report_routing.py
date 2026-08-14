@@ -327,17 +327,18 @@ class DefinitionLoadingTests(unittest.TestCase):
         definitions = load_report_definitions(PROJECT_ROOT / "config")
         by_name = {d.name: d for d in definitions}
 
-        for name in ("GM SOP", "Morning SOP ALL"):
+        for name in ("GM SOP", "Morning SOP ALL", "Need To Collect Company"):
             self.assertIn(name, by_name)
             self.assertTrue(by_name[name].match.enabled)
-            self.assertTrue(by_name[name].extraction.split.enabled)
-        # Each report writes to its own filename so outputs cannot collide.
-        self.assertNotEqual(
-            by_name["GM SOP"].report_filename,
-            by_name["Morning SOP ALL"].report_filename,
-        )
-        # The report whose real columns are still unknown ships disabled.
-        self.assertFalse(by_name["Need To Collect Company"].match.enabled)
+        # GM SOP and Morning SOP ALL print one document per Sub Status.
+        self.assertTrue(by_name["GM SOP"].extraction.split.enabled)
+        self.assertTrue(by_name["Morning SOP ALL"].extraction.split.enabled)
+        # Need To Collect is already filtered to one Sub Status in Salesforce
+        # and has no Sub Status column, so it prints as a single document.
+        self.assertFalse(by_name["Need To Collect Company"].extraction.split.enabled)
+        # Every report writes to its own filename so outputs cannot collide.
+        filenames = [d.report_filename for d in by_name.values()]
+        self.assertEqual(len(filenames), len(set(filenames)))
 
     def test_the_two_live_reports_claim_different_files(self) -> None:
         by_name = {d.name: d for d in load_report_definitions(PROJECT_ROOT / "config")}
@@ -347,6 +348,9 @@ class DefinitionLoadingTests(unittest.TestCase):
         self.assertFalse(gm.matches("Morning SOP ALL-2026-08-13.xlsx"))
         self.assertTrue(morning.matches("Morning SOP ALL-2026-08-13.xlsx"))
         self.assertFalse(morning.matches("GM SOP-2026-08-13.xlsx"))
+        collect = by_name["Need To Collect Company"].match
+        self.assertTrue(collect.matches("need to collect Company-2026-08-13.xlsx"))
+        self.assertFalse(collect.matches("GM SOP-2026-08-13.xlsx"))
 
     def test_missing_rules_directory_falls_back_to_the_legacy_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

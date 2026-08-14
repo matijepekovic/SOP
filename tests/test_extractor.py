@@ -82,6 +82,16 @@ class ExtractionEngineTests(unittest.TestCase):
         self.assertIn("Job Number", message)
         self.assertIn("Data", message)
 
+    def test_a_contact_named_max_is_not_mistaken_for_a_subtotal(self) -> None:
+        from sop_reporter.extractor import _is_summary_row
+
+        # "Max" in a column the rules map is a person; in the spacer column
+        # beside a Subtotal label it is an aggregate function.
+        self.assertFalse(_is_summary_row(("Olympia", "Max", "J001"), frozenset({0, 1, 2})))
+        self.assertTrue(_is_summary_row(("", "", "Max", 2.0), frozenset({0, 1, 3})))
+        # Subtotal and Total are never a person, wherever they appear.
+        self.assertTrue(_is_summary_row(("Subtotal", "", ""), frozenset({0, 1, 2})))
+
     def test_zero_width_characters_are_stripped_from_text(self) -> None:
         from sop_reporter.extractor import _normalized_text
 

@@ -85,19 +85,31 @@ def _is_summary_label(value: Any) -> bool:
     )
 
 
-SUMMARY_MARKERS = {"subtotal", "total", "grand total", "sum", "avg", "average", "count"}
+# Unambiguous as a whole cell value: no contact or address is called this.
+SUMMARY_ROW_LABELS = {"subtotal", "total", "grand total"}
+# Ambiguous — "Max" and "Min" are also names — so these only count as summary
+# markers when they appear in a column no configured column maps to. Exports
+# put the aggregate function in the spacer column beside the label.
+AGGREGATE_FUNCTIONS = {"sum", "avg", "average", "count", "max", "min"}
 
 
-def _is_summary_row(values: Sequence[Any]) -> bool:
+def _is_summary_row(
+    values: Sequence[Any], mapped_indexes: frozenset[int] = frozenset()
+) -> bool:
     """Whether a row is one of an export's aggregate lines.
 
     Matched on whole cells only, so a value that merely contains "total"
     (an address, a note) is never mistaken for one.
     """
-    return any(
-        isinstance(value, str) and value.strip().casefold() in SUMMARY_MARKERS
-        for value in values
-    )
+    for index, value in enumerate(values):
+        if not isinstance(value, str):
+            continue
+        text = value.strip().casefold()
+        if text in SUMMARY_ROW_LABELS:
+            return True
+        if text in AGGREGATE_FUNCTIONS and index not in mapped_indexes:
+            return True
+    return False
 
 
 def _parse_number(value: Any) -> float | int | None:
@@ -535,6 +547,11 @@ class ExtractionEngine:
                     f"Filter references unknown column(s) in {path.name}: {', '.join(unknown_filters)}"
                 )
 
+            mapped_indexes = frozenset(
+                headers[header_key(rule.source)][1]
+                for rule in self.config.columns
+                if header_key(rule.source) in headers
+            )
             output_rows: list[dict[str, Any]] = []
             fill_down_values: dict[str, Any] = {}
             for row_number, values in enumerate(
@@ -550,7 +567,7 @@ class ExtractionEngine:
                     if self.config.input.skip_blank_rows:
                         continue
 
-                if _is_summary_row(values):
+                if _is_summary_row(values, mapped_indexes):
                     # Grouped exports interleave Subtotal/Sum/Avg/Count lines.
                     # Their aggregate value lands in whichever column sits under
                     # it — a Count of 2 reads as Job Number "2" — so these rows

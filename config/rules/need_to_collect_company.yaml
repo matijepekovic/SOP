@@ -1,51 +1,31 @@
-# Need To Collect Company
+# need to collect Company — Salesforce "need to collect Company" export.
 #
-# DISABLED PENDING REAL COLUMN HEADERS.
-#
-# The columns below are copied from the GM SOP report as a starting point and
-# have NOT been verified against a real "Need To Collect Company" workbook. Enabling this file
-# before checking them will fail extraction with an error listing the headers
-# the workbook actually contains.
-#
-# To finish this report:
-#   1. Run SOP Reporter once and open logs/app.log.
-#   2. Find the line:  <file> sheet '<name>' row <n> headers: ...
-#   3. Correct input.header_row / input.sheet_name and the column sources
-#      below to match, then set match.enabled to true.
+# This report is already filtered to a single Sub Status ("Need Collect") in
+# Salesforce and carries no Sub Status column at all, so unlike GM SOP and
+# Morning SOP ALL it does not split: the Olympia rows print as one document.
 name: Need To Collect Company
 
 match:
   filename_patterns:
     - "need to collect Company*.xlsx"
     - "need to collect Company*.xlsm"
-  enabled: false
+  enabled: true
 
 output:
-  report_filename: "Need_To_Collect_Company_%Y-%m-%d_%H%M%S.xlsx"
+  report_filename: "Need_To_Collect_%Y-%m-%d_%H%M%S.xlsx"
 
 version: 1
 
-# Based on the Salesforce GM SOP report shown for the Olympia market.
-# Header/sheet values can be adjusted after the first real emailed workbook is available.
 input:
-  # null uses the workbook's active worksheet.
   sheet_name: null
-  header_row: 1
-  data_start_row: 2
+  header_row: auto
   stop_at_first_blank_row: false
   skip_blank_rows: true
 
 columns:
-  # Market and Sub Status drive filtering/splitting. They are hidden from the
-  # printed table because the report title already identifies both values.
+  # Market drives the filter and is hidden from the table; the title names it.
   - source: Market
     target: Market
-    type: text
-    required: true
-    include_in_report: false
-    fill_down: true
-  - source: Sub Status
-    target: Sub Status
     type: text
     required: true
     include_in_report: false
@@ -54,27 +34,30 @@ columns:
     target: Product
     type: text
     required: true
+    # Grouped in the export: the value appears once per group and the detail
+    # rows beneath it are blank.
+    fill_down: true
     width: 12
   - source: Job Number
     target: Job Number
     type: text
     required: true
     width: 13
-  - source: Contact Full Name
+  - source: 'Contact: Full Name'
     target: Contact Full Name
     type: text
     required: true
-    width: 21
+    width: 22
   - source: Opportunity Name
     target: Opportunity Name
     type: text
     required: true
-    width: 34
+    width: 38
   - source: Next Step-WO
     target: Next Step-WO
     type: text
     required: true
-    width: 48
+    width: 44
   - source: Amount
     target: Amount
     type: currency
@@ -83,25 +66,29 @@ columns:
     width: 14
   - source: Days in Current Sub Status
     target: Days in Current Sub Status
-    type: integer
+    type: number
     required: true
-    number_format: '0'
+    number_format: '0.#'
     width: 15
-  - source: Close Date
-    target: Close Date
-    type: date
+  - source: 'Address (City)'
+    target: City
+    type: text
     required: true
-    number_format: mm/dd/yyyy
-    width: 13
-  - source: Sales Rep 1 Name
+    width: 16
+  - source: 'Assigned Service Resource: Name'
+    target: Assigned Resource
+    type: text
+    required: true
+    width: 22
+  - source: 'Sales Rep 1: Name'
     target: Sales Rep 1 Name
     type: text
     required: true
     width: 18
-  - source: Sales Rep 2 Name
+  - source: 'Sales Rep 2: Name'
     target: Sales Rep 2 Name
     type: text
-    required: false
+    required: true
     width: 18
 
 filters:
@@ -115,32 +102,18 @@ filters:
     - column: Job Number
       operator: not_blank
 
-# Every distinct Sub Status remaining after the Olympia filter becomes its own
-# workbook and its own Excel print job. New status names are handled automatically.
+# No Sub Status column exists in this report, so there is nothing to split on.
 split:
-  enabled: true
-  by: Sub Status
-  title_template: 'OLYMPIA — {value}'
-  filename_suffix: '_{value}'
-  include_blank: true
-  blank_label: No Sub Status
+  enabled: false
 
 grouping:
   enabled: false
-  by: []
-  aggregations: []
 
-sort:
-  - column: Days in Current Sub Status
-    direction: desc
-  - column: Close Date
-    direction: asc
-  - column: Job Number
-    direction: asc
+sort: []
 
 report:
   worksheet_name: Need To Collect
-  title: NEED TO COLLECT - COMPANY
+  title: OLYMPIA — NEED TO COLLECT
   table_start_row: 4
   show_generated_at: true
   generated_at_label: Generated
