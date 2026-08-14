@@ -5,8 +5,7 @@ version: 1
 input:
   # null uses the workbook's active worksheet.
   sheet_name: null
-  header_row: 1
-  data_start_row: 2
+  header_row: auto
   stop_at_first_blank_row: false
   skip_blank_rows: true
 
@@ -29,13 +28,16 @@ columns:
     target: Product
     type: text
     required: true
+    # Grouped in the export like Market and Sub Status: the value appears on
+    # the first row of each group and the detail rows below it are blank.
+    fill_down: true
     width: 12
   - source: Job Number
     target: Job Number
     type: text
     required: true
     width: 13
-  - source: Contact Full Name
+  - source: 'Contact: Full Name'
     target: Contact Full Name
     type: text
     required: true
@@ -58,9 +60,10 @@ columns:
     width: 14
   - source: Days in Current Sub Status
     target: Days in Current Sub Status
-    type: integer
+    # Real exports carry fractional days (7.5), so this is not an integer.
+    type: number
     required: true
-    number_format: '0'
+    number_format: '0.#'
     width: 15
   - source: Close Date
     target: Close Date
@@ -68,16 +71,13 @@ columns:
     required: true
     number_format: mm/dd/yyyy
     width: 13
-  - source: Sales Rep 1 Name
-    target: Sales Rep 1 Name
-    type: text
-    required: true
-    width: 18
-  - source: Sales Rep 2 Name
-    target: Sales Rep 2 Name
+  # The GM SOP export carries no sales-rep column. The service resource is
+  # the closest equivalent it does provide.
+  - source: 'Assigned Service Resource: Name'
+    target: Assigned Resource
     type: text
     required: false
-    width: 18
+    width: 22
 
 filters:
   mode: all

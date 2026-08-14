@@ -44,6 +44,24 @@ def _is_blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
 
 
+# Report exports mark sorted columns by appending an arrow to the header, so
+# "Market" arrives as "Market  ↑". Which columns carry one changes with the
+# sort order, so the arrows are stripped rather than written into the rules.
+SORT_INDICATORS = "↑↓▲▼⬆⬇▴▾⇅↕"
+_HEADER_WHITESPACE = re.compile(r"\s+")
+
+
+def normalize_header(value: Any) -> str:
+    """Fold a header cell to the form column rules are written in."""
+    text = str(value).replace(" ", " ")
+    text = text.strip().strip(SORT_INDICATORS + " \t")
+    return _HEADER_WHITESPACE.sub(" ", text).strip()
+
+
+def header_key(value: Any) -> str:
+    return normalize_header(value).casefold()
+
+
 def _normalized_text(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
@@ -327,7 +345,7 @@ class ExtractionEngine:
         if path.suffix.casefold() not in {".xlsx", ".xlsm"}:
             return False
         required = {
-            rule.source.casefold() for rule in self.config.columns if rule.required
+            header_key(rule.source) for rule in self.config.columns if rule.required
         }
         if not required:
             return False
@@ -344,9 +362,7 @@ class ExtractionEngine:
             return False
         finally:
             workbook.close()
-        present = {
-            str(value).strip().casefold() for value in values if not _is_blank(value)
-        }
+        present = {header_key(value) for value in values if not _is_blank(value)}
         return required.issubset(present)
 
     def _locate_header_row(self, worksheet, path: Path) -> tuple[int, tuple]:
@@ -367,9 +383,9 @@ class ExtractionEngine:
             )
             return configured, values
 
-        wanted = {rule.source.casefold() for rule in self.config.columns}
+        wanted = {header_key(rule.source) for rule in self.config.columns}
         required = {
-            rule.source.casefold() for rule in self.config.columns if rule.required
+            header_key(rule.source) for rule in self.config.columns if rule.required
         }
         best_row = 0
         best_values: tuple = ()
@@ -383,9 +399,7 @@ class ExtractionEngine:
             start=1,
         ):
             labels = {
-                str(value).strip().casefold()
-                for value in values
-                if not _is_blank(value)
+                header_key(value) for value in values if not _is_blank(value)
             }
             if labels:
                 preview = ", ".join(
@@ -399,9 +413,7 @@ class ExtractionEngine:
         # Require every mandatory column, so a stray row that happens to echo
         # one or two column names is never mistaken for the header.
         if best_row and required:
-            found = {
-                str(v).strip().casefold() for v in best_values if not _is_blank(v)
-            }
+            found = {header_key(v) for v in best_values if not _is_blank(v)}
             if not required.issubset(found):
                 best_row = 0
 
@@ -448,7 +460,7 @@ class ExtractionEngine:
             for index, value in enumerate(header_values):
                 if _is_blank(value):
                     continue
-                name = str(value).strip()
+                name = normalize_header(value)
                 folded = name.casefold()
                 if folded in headers:
                     raise ExtractionError(
@@ -468,7 +480,7 @@ class ExtractionEngine:
             missing = [
                 rule.source
                 for rule in self.config.columns
-                if rule.required and rule.source.casefold() not in headers
+                if rule.required and header_key(rule.source) not in headers
             ]
             if missing:
                 # Report what the workbook actually contains. Without this the
@@ -489,7 +501,9 @@ class ExtractionEngine:
                 )
 
             known_filter_columns = set(headers)
-            known_filter_columns.update(rule.target.casefold() for rule in self.config.columns)
+            known_filter_columns.update(
+                header_key(rule.target) for rule in self.config.columns
+            )
             unknown_filters = [
                 rule.column
                 for rule in self.config.filters.rules
@@ -522,7 +536,7 @@ class ExtractionEngine:
                 mapped_row: dict[str, Any] = {}
                 try:
                     for rule in self.config.columns:
-                        header = headers.get(rule.source.casefold())
+                        header = headers.get(header_key(rule.source))
                         raw_value = (
                             values[header[1]]
                             if header is not None and header[1] < len(values)

@@ -6,19 +6,35 @@ from pathlib import Path
 from openpyxl import Workbook
 
 
+# Mirrors the real GM SOP export: ten banner rows above the header, an empty
+# leading column, arrows appended to whichever columns the report is sorted
+# by, and a colon in the contact column's name.
+BANNER_ROWS = [
+    [],
+    [None, "GM SOP"],
+    [None, "As of 2026-08-13 14:00:09 Pacific Standard Time/PST • Sorted by Close Date (Descending)"],
+    [],
+    [],
+    [None, "Filtered By"],
+    [None, "Show: All opportunities"],
+    [None, "Status not equal to Cancel Outside Recission,Canceled,Completed"],
+    [None, "Service Project equals False"],
+    [],
+]
+HEADER_ROW_NUMBER = len(BANNER_ROWS) + 1
+
 HEADERS = [
-    "Market",
-    "Sub Status",
-    "Product",
+    "Market  \u2191",
+    "Sub Status  \u2193",
+    "Product  \u2191",
     "Job Number",
-    "Contact Full Name",
+    "Contact: Full Name",
     "Opportunity Name",
     "Next Step-WO",
     "Amount",
     "Days in Current Sub Status",
     "Close Date",
-    "Sales Rep 1 Name",
-    "Sales Rep 2 Name",
+    "Assigned Service Resource: Name",
 ]
 
 ROWS = [
@@ -34,7 +50,6 @@ ROWS = [
         1,
         date(2026, 8, 17),
         "Leona Miles",
-        "Nolen Moore",
     ],
     [
         None,
@@ -48,7 +63,6 @@ ROWS = [
         5,
         date(2026, 8, 22),
         "Jose Perez",
-        "Jorge Sande",
     ],
     [
         None,
@@ -78,7 +92,6 @@ ROWS = [
         9,
         date(2026, 8, 20),
         "Leona Miles",
-        "Nolen Moore",
     ],
     [
         None,
@@ -108,7 +121,6 @@ ROWS = [
         12,
         date(2026, 9, 1),
         "Dale Porter",
-        "Jorge Sande",
     ],
     [
         "Tacoma",
@@ -147,10 +159,13 @@ def make_salesforce_sample_workbook(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
     worksheet = workbook.active
-    worksheet.title = "Report"
-    worksheet.append(HEADERS)
+    worksheet.title = "GM SOP"
+    for banner in BANNER_ROWS:
+        worksheet.append(banner)
+    # A leading empty column, exactly as the export produces.
+    worksheet.append([None] + HEADERS)
     for row in ROWS:
-        worksheet.append(row)
+        worksheet.append([None] + list(row))
     workbook.save(path)
     workbook.close()
     return path
