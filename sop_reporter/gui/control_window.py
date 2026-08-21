@@ -11,7 +11,7 @@ from typing import Callable
 
 import yaml
 
-from sop_reporter.exceptions import UpdateError
+from sop_reporter.exceptions import CredentialsCancelledError, UpdateError
 from sop_reporter.pipeline import RunResult, RunStatus
 
 
@@ -34,6 +34,7 @@ class ControlWindow:
         updater=None,
         current_version: str = "",
         check_updates_on_startup: bool = False,
+        change_credentials: Callable[[], str] | None = None,
     ) -> None:
         self.job_runner = job_runner
         self._run_now_callback = run_now
@@ -44,6 +45,7 @@ class ControlWindow:
         self.logs_dir = Path(logs_dir)
         self.updater = updater
         self.current_version = current_version
+        self._change_credentials = change_credentials
         self._pending_release = None
         self._update_busy = False
         self._events: queue.Queue[tuple[str, object | None]] = queue.Queue()
@@ -91,6 +93,12 @@ class ControlWindow:
         ttk.Button(actions, text="Open Reports", command=lambda: self._open(self.reports_dir)).pack(side="left", padx=6)
         ttk.Button(actions, text="Open Logs", command=lambda: self._open(self.logs_dir)).pack(side="left")
         ttk.Button(actions, text="Open Rule File", command=lambda: self._open(self.extraction_config_path)).pack(side="left", padx=6)
+        self.credentials_button = ttk.Button(
+            actions, text="Change Gmail Sign-in", command=self._change_gmail
+        )
+        self.credentials_button.pack(side="left")
+        if self._change_credentials is None:
+            self.credentials_button.configure(state="disabled")
 
         status_frame = ttk.LabelFrame(outer, text="Current status", padding=12)
         status_frame.pack(fill="x", pady=(0, 12))
@@ -247,6 +255,47 @@ class ControlWindow:
 
     def set_result(self, result: RunResult) -> None:
         self._events.put(("result", result))
+
+    def change_gmail_signin(self) -> None:
+        """Public entry point, safe to call from the tray thread."""
+        self.root.after(0, self._change_gmail)
+
+    def _change_gmail(self) -> None:
+        """Re-enter the Gmail address and app password.
+
+        The stored password is only replaced once Gmail accepts the new one,
+        so a failed attempt leaves the working credential in place.
+        """
+        if self._change_credentials is None:
+            return
+        if self.job_runner.is_running:
+            messagebox.showinfo(
+                "SOP Reporter is busy",
+                "A run is in progress. Wait for it to finish, then change the "
+                "Gmail sign-in.",
+                parent=self.root,
+            )
+            return
+        self.credentials_button.configure(state="disabled")
+        try:
+            account = self._change_credentials()
+        except CredentialsCancelledError:
+            self.status.set("Gmail sign-in unchanged.")
+            return
+        except Exception as exc:
+            LOGGER.exception("Changing the Gmail sign-in failed")
+            messagebox.showerror("Gmail sign-in failed", str(exc), parent=self.root)
+            return
+        finally:
+            self.credentials_button.configure(state="normal")
+
+        self.status.set(f"Gmail sign-in saved for {account}.")
+        messagebox.showinfo(
+            "Gmail sign-in saved",
+            f"Signed in as {account}.\n\nExit and reopen SOP Reporter so the "
+            "new sign-in takes effect.",
+            parent=self.root,
+        )
 
     # ------------------------------------------------------------------
     # Software updates

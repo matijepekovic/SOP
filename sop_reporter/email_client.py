@@ -50,6 +50,41 @@ def _quote_search_value(value: str) -> str:
     return value.replace("\\", "").replace('"', "")
 
 
+def verify_credentials(config: EmailConfig, account: str, app_password: str) -> str | None:
+    """Try a Gmail login. Returns None when accepted, else why it was refused.
+
+    Used before storing credentials so a wrong app password is never saved.
+    A network problem is reported separately from a rejected password, because
+    only the latter means the password itself is wrong.
+    """
+    connection = None
+    try:
+        connection = imaplib.IMAP4_SSL(config.imap_host, config.imap_port, timeout=30)
+    except OSError as exc:
+        return (
+            f"Could not reach {config.imap_host}: {exc}. "
+            "Check the internet connection and try again."
+        )
+    try:
+        status, _ = connection.login(account, app_password)
+        if status != "OK":
+            return "Gmail rejected this address and app password."
+        return None
+    except imaplib.IMAP4.error:
+        return (
+            "Gmail rejected this address and app password. Use a 16-character "
+            "app password generated at myaccount.google.com/apppasswords, not "
+            "the normal Gmail password."
+        )
+    except OSError as exc:
+        return f"The connection to Gmail failed: {exc}"
+    finally:
+        try:
+            connection.logout()
+        except Exception:
+            pass
+
+
 class GmailIMAPClient:
     def __init__(
         self,

@@ -11,7 +11,7 @@ from sop_reporter.config import (
     update_email_account,
 )
 from sop_reporter.credentials import CredentialManager
-from sop_reporter.email_client import GmailIMAPClient
+from sop_reporter.email_client import GmailIMAPClient, verify_credentials
 from sop_reporter.exceptions import ConfigurationError, CredentialsCancelledError
 from sop_reporter.extractor import ExtractionEngine
 from sop_reporter.logging_setup import setup_logging
@@ -43,9 +43,36 @@ def _show_error(title: str, message: str) -> None:
         LOGGER.exception("Could not display startup error dialog")
 
 
+def _verifier_for(app_config):
+    return lambda account, password: verify_credentials(
+        app_config.email, account, password
+    )
+
+
+def _change_credentials(paths: AppPaths) -> str:
+    """Re-enter the Gmail sign-in and persist the address. Returns the account.
+
+    force_prompt bypasses the stored password, and the verifier means the
+    stored one is only replaced once Gmail accepts the new one.
+    """
+    app_config = load_app_config(paths.app_config_path)
+    credentials = CredentialManager().ensure_credentials(
+        app_config.email.account,
+        verifier=_verifier_for(app_config),
+        force_prompt=True,
+    )
+    if credentials.account != app_config.email.account:
+        update_email_account(paths.app_config_path, credentials.account)
+    LOGGER.info("Gmail sign-in updated for %s", credentials.account)
+    return credentials.account
+
+
 def _build_runner(paths: AppPaths) -> tuple[JobRunner, object]:
     app_config = load_app_config(paths.app_config_path)
-    credentials = CredentialManager().ensure_credentials(app_config.email.account)
+    credentials = CredentialManager().ensure_credentials(
+        app_config.email.account,
+        verifier=_verifier_for(app_config),
+    )
     if credentials.account != app_config.email.account:
         update_email_account(paths.app_config_path, credentials.account)
         app_config = load_app_config(paths.app_config_path)
@@ -157,6 +184,7 @@ def main() -> int:
             check_updates_on_startup=(
                 updater is not None and app_config.update.check_on_startup
             ),
+            change_credentials=lambda: _change_credentials(paths),
         )
         scheduler.start()
         tray.run()

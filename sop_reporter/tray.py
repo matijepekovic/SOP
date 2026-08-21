@@ -30,6 +30,7 @@ class TrayApp:
         updater=None,
         current_version: str = "",
         check_updates_on_startup: bool = False,
+        change_credentials=None,
     ) -> None:
         self.job_runner = job_runner
         self.scheduler = scheduler
@@ -42,6 +43,7 @@ class TrayApp:
         self.updater = updater
         self.current_version = current_version
         self.check_updates_on_startup = check_updates_on_startup
+        self.change_credentials = change_credentials
         self._icon: Any | None = None
 
     def run(self) -> None:
@@ -60,6 +62,7 @@ class TrayApp:
             pystray.MenuItem("Open Settings", self._open_settings),
             pystray.MenuItem("Open Logs", self._open_logs),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Change Gmail Sign-in", self._change_gmail),
             pystray.MenuItem("Check for Updates", self._check_updates),
             pystray.MenuItem("Exit", self._exit),
         )
@@ -85,6 +88,7 @@ class TrayApp:
             updater=self.updater,
             current_version=self.current_version,
             check_updates_on_startup=self.check_updates_on_startup,
+            change_credentials=self.change_credentials,
         )
         self._control_window.run()
 
@@ -92,6 +96,13 @@ class TrayApp:
         window = getattr(self, "_control_window", None)
         if window is not None:
             window.show()
+
+    def _change_gmail(self, _icon=None, _item=None) -> None:
+        window = getattr(self, "_control_window", None)
+        if window is None:
+            return
+        window.show()
+        window.change_gmail_signin()
 
     def _check_updates(self, _icon=None, _item=None) -> None:
         """Surface the update flow, which lives in the control window."""

@@ -37,10 +37,35 @@ class CredentialManager:
         self._keyring = keyring
         return keyring
 
-    def ensure_credentials(self, configured_account: str) -> GmailCredentials:
+    def clear(self, account: str) -> None:
+        """Forget the stored app password so the next run asks again."""
+        account = account.strip()
+        if not account:
+            return
+        keyring_module = self._get_keyring()
+        try:
+            keyring_module.delete_password(SERVICE_NAME, account)
+        except Exception:
+            # Nothing stored for this account, which is the desired end state.
+            pass
+
+    def ensure_credentials(
+        self,
+        configured_account: str,
+        verifier: Callable[[str, str], str | None] | None = None,
+        *,
+        force_prompt: bool = False,
+    ) -> GmailCredentials:
+        """Return working Gmail credentials, asking for them if needed.
+
+        ``verifier`` is given the account and password and returns None when
+        Gmail accepts them, or a sentence explaining the refusal. Nothing is
+        written to Credential Manager until it succeeds, so a mistyped app
+        password can never be stored and become impossible to change.
+        """
         keyring_module = self._get_keyring()
         account = configured_account.strip()
-        if account:
+        if account and not force_prompt:
             try:
                 stored = keyring_module.get_password(SERVICE_NAME, account)
             except Exception as exc:
@@ -53,19 +78,29 @@ class CredentialManager:
                     app_password="".join(stored.split()),
                 )
 
-        entered = self._prompt(account)
-        normalized_password = "".join(entered.app_password.split())
-        try:
-            keyring_module.set_password(
-                SERVICE_NAME,
-                entered.account,
-                normalized_password,
+        problem = ""
+        while True:
+            entered = self._prompt(account, problem) if problem else self._prompt(account)
+            normalized_password = "".join(entered.app_password.split())
+            account = entered.account
+
+            if verifier is not None:
+                problem = verifier(entered.account, normalized_password) or ""
+                if problem:
+                    # Ask again rather than storing something that does not work.
+                    continue
+
+            try:
+                keyring_module.set_password(
+                    SERVICE_NAME,
+                    entered.account,
+                    normalized_password,
+                )
+            except Exception as exc:
+                raise CredentialsError(
+                    "Windows Credential Manager could not store the Gmail app password"
+                ) from exc
+            return GmailCredentials(
+                account=entered.account,
+                app_password=normalized_password,
             )
-        except Exception as exc:
-            raise CredentialsError(
-                "Windows Credential Manager could not store the Gmail app password"
-            ) from exc
-        return GmailCredentials(
-            account=entered.account,
-            app_password=normalized_password,
-        )

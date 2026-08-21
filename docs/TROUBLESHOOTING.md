@@ -84,6 +84,16 @@ Check the printer queue and generated report before changing state. If a qualifi
 - Confirm **Start in** is the folder containing `SOPReporter.exe`.
 - Check `sop_reporter.log` under the executable folder or `%APPDATA%\SOPReporter\logs`.
 
+## Changing the Gmail sign-in
+
+Use **Change Gmail Sign-in**, in the tray menu or beside the other buttons at the top of the control window. It asks for the address and app password again.
+
+The new password is tested against Gmail before anything is saved. If Gmail refuses it the dialog reopens and says why, and the credential already stored is left untouched — so a failed attempt can never lock you out of a working setup. The same check runs during first-time setup, so a mistyped app password is refused on the spot rather than saved.
+
+Nothing is written to the configuration file. The password lives only in Windows Credential Manager, under `SOPReporter Gmail`.
+
+If the application will not start at all and you need to clear the credential by hand: **Credential Manager** → **Windows Credentials** → remove the `SOPReporter Gmail` entry, then start SOP Reporter and the setup dialog reappears.
+
 ## Updating from the desktop
 
 Use **Check for Updates**, in the tray menu or at the bottom of the control window. If a newer build exists, **Install and Restart** downloads it, swaps it in, and relaunches SOP Reporter.

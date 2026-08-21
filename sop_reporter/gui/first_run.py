@@ -11,7 +11,14 @@ class EnteredCredentials:
     app_password: str = field(repr=False)
 
 
-def prompt_for_credentials(prefilled_account: str = "") -> EnteredCredentials:
+def prompt_for_credentials(
+    prefilled_account: str = "", problem: str = ""
+) -> EnteredCredentials:
+    """Ask for Gmail credentials.
+
+    ``problem`` reports why a previous attempt was refused, so a re-prompt
+    explains itself instead of appearing again for no visible reason.
+    """
     import tkinter as tk
     from tkinter import messagebox, ttk
 
@@ -39,6 +46,15 @@ def prompt_for_credentials(prefilled_account: str = "") -> EnteredCredentials:
         ),
         justify="left",
     ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 16))
+
+    if problem:
+        ttk.Label(
+            frame,
+            text=problem,
+            justify="left",
+            wraplength=380,
+            foreground="#B00020",
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(12, 0))
 
     account_var = tk.StringVar(value=prefilled_account)
     password_var = tk.StringVar()
