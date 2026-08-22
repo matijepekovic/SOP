@@ -146,9 +146,21 @@ class GmailIMAPClient:
                 self.config.imap_port,
                 timeout=30,
             )
-            status, _ = connection.login(self.account, self._app_password)
+            try:
+                status, _ = connection.login(self.account, self._app_password)
+            except imaplib.IMAP4.error as exc:
+                # Gmail reports a bad app password by raising here rather than
+                # returning a non-OK status, so it has to be caught at the call
+                # or the generic handler below strips its meaning.
+                raise EmailClientError(
+                    f"Gmail rejected the stored app password for {self.account}: {exc}",
+                    authentication_failed=True,
+                ) from exc
             if status != "OK":
-                raise EmailClientError("Gmail rejected the IMAP login")
+                raise EmailClientError(
+                    f"Gmail rejected the stored app password for {self.account}",
+                    authentication_failed=True,
+                )
             status, select_data = connection.select(self.config.mailbox, readonly=True)
             if status != "OK":
                 raise EmailClientError(

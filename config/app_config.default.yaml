@@ -64,4 +64,7 @@ update:
   enabled: true
   repository: matijepekovic/SOP
   check_on_startup: true
+  # Install a newer build found at startup automatically and restart. Set to
+  # false to only be told a newer build exists.
+  auto_install: true
   include_prereleases: false

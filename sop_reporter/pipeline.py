@@ -54,6 +54,9 @@ class RunResult:
     attachment_count: int = 0
     row_count: int = 0
     error: Exception | None = None
+    # True when Gmail refused the stored app password, so the app can offer to
+    # re-enter it rather than reporting a generic failure.
+    authentication_failed: bool = False
 
 
 class JobRunner:
@@ -92,10 +95,18 @@ class JobRunner:
             return self._run_once_locked(trigger)
         except Exception as exc:
             LOGGER.exception("SOP Reporter %s run failed", trigger)
+            authentication_failed = bool(getattr(exc, "authentication_failed", False))
+            message = (
+                "Gmail refused the saved app password. Use Change Gmail Sign-in "
+                "to enter it again."
+                if authentication_failed
+                else f"Run failed: {exc}"
+            )
             return RunResult(
                 status=RunStatus.FAILED,
-                message=f"Run failed: {exc}",
+                message=message,
                 error=exc,
+                authentication_failed=authentication_failed,
             )
         finally:
             self._run_lock.release()

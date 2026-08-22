@@ -17,6 +17,12 @@ class CredentialsCancelledError(CredentialsError):
 class EmailClientError(SOPReporterError):
     """Raised for IMAP or MIME-processing errors."""
 
+    def __init__(self, message: str, *, authentication_failed: bool = False) -> None:
+        super().__init__(message)
+        # Distinguishes "the stored password is wrong" from every other IMAP
+        # failure, so the app can offer to re-enter it instead of just failing.
+        self.authentication_failed = authentication_failed
+
 
 class ExtractionError(SOPReporterError):
     """Raised when a workbook cannot be transformed by the configured rules."""

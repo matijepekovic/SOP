@@ -30,6 +30,7 @@ class TrayApp:
         updater=None,
         current_version: str = "",
         check_updates_on_startup: bool = False,
+        auto_install_updates: bool = False,
         change_credentials=None,
     ) -> None:
         self.job_runner = job_runner
@@ -43,6 +44,7 @@ class TrayApp:
         self.updater = updater
         self.current_version = current_version
         self.check_updates_on_startup = check_updates_on_startup
+        self.auto_install_updates = auto_install_updates
         self.change_credentials = change_credentials
         self._icon: Any | None = None
 
@@ -88,6 +90,7 @@ class TrayApp:
             updater=self.updater,
             current_version=self.current_version,
             check_updates_on_startup=self.check_updates_on_startup,
+            auto_install_updates=self.auto_install_updates,
             change_credentials=self.change_credentials,
         )
         self._control_window.run()

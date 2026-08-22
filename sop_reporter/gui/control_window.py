@@ -34,6 +34,7 @@ class ControlWindow:
         updater=None,
         current_version: str = "",
         check_updates_on_startup: bool = False,
+        auto_install_updates: bool = False,
         change_credentials: Callable[[], str] | None = None,
     ) -> None:
         self.job_runner = job_runner
@@ -46,6 +47,7 @@ class ControlWindow:
         self.updater = updater
         self.current_version = current_version
         self._change_credentials = change_credentials
+        self._auto_install_updates = auto_install_updates
         self._pending_release = None
         self._update_busy = False
         self._events: queue.Queue[tuple[str, object | None]] = queue.Queue()
@@ -350,6 +352,9 @@ class ControlWindow:
                 parent=self.root,
             )
             return
+        self._start_install(release)
+
+    def _start_install(self, release) -> None:
         self._update_busy = True
         self.check_update_button.configure(state="disabled")
         self.install_update_button.configure(state="disabled")
@@ -396,6 +401,16 @@ class ControlWindow:
             return
         self._pending_release = release
         self.install_update_button.configure(state="normal")
+        if silent and self._auto_install_updates and not self.job_runner.is_running:
+            # The startup check found a newer build. Install it rather than
+            # only reporting it, which would leave the app on an old version
+            # until somebody happened to open this window.
+            self.update_status.set(
+                f"Version {release.version} found. Installing automatically…"
+            )
+            LOGGER.info("Auto-installing update %s", release.version)
+            self._start_install(release)
+            return
         self.update_status.set(
             f"Version {release.version} is available "
             f"(you have {self.current_version}). "
@@ -425,7 +440,19 @@ class ControlWindow:
                 self.status.set(payload.message)
                 self.run_button.configure(state="normal")
                 if payload.status == RunStatus.FAILED:
-                    messagebox.showerror("SOP Reporter failed", payload.message, parent=self.root)
+                    if payload.authentication_failed and self._change_credentials:
+                        # The stored password no longer works; go straight to
+                        # fixing it instead of leaving a dead end.
+                        if messagebox.askyesno(
+                            "Gmail sign-in needed",
+                            f"{payload.message}\n\nEnter it now?",
+                            parent=self.root,
+                        ):
+                            self._change_gmail()
+                    else:
+                        messagebox.showerror(
+                            "SOP Reporter failed", payload.message, parent=self.root
+                        )
             elif event == "update_checked" and isinstance(payload, tuple):
                 self._on_update_checked(*payload)
             elif event == "update_error" and isinstance(payload, tuple):

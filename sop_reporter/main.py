@@ -184,6 +184,9 @@ def main() -> int:
             check_updates_on_startup=(
                 updater is not None and app_config.update.check_on_startup
             ),
+            auto_install_updates=(
+                updater is not None and app_config.update.auto_install
+            ),
             change_credentials=lambda: _change_credentials(paths),
         )
         scheduler.start()

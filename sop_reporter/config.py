@@ -174,6 +174,10 @@ class UpdateConfig:
     repository: str
     check_on_startup: bool
     include_prereleases: bool
+    # Install a newer build found by the startup check without waiting for a
+    # click. Without this the check only reports, and nothing ever updates
+    # unless someone opens the window.
+    auto_install: bool = True
 
 
 @dataclass(frozen=True)
@@ -451,6 +455,7 @@ def load_app_config(path: Path) -> AppConfig:
         repository=repository,
         check_on_startup=bool(update_data.get("check_on_startup", True)),
         include_prereleases=bool(update_data.get("include_prereleases", False)),
+        auto_install=bool(update_data.get("auto_install", True)),
     )
 
     return AppConfig(

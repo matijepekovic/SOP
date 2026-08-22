@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from sop_reporter.credentials import SERVICE_NAME, CredentialManager
 from sop_reporter.exceptions import CredentialsCancelledError
@@ -122,6 +124,53 @@ class CredentialTests(unittest.TestCase):
 
         manager.ensure_credentials("a@b.com", verifier=only_good)
         self.assertEqual(prompt.calls, 1)
+
+
+
+class AuthenticationFailureTests(unittest.TestCase):
+    """A stored password Gmail no longer accepts must be recognisable."""
+
+    def test_gmail_login_rejection_is_flagged_not_swallowed(self) -> None:
+        import imaplib
+
+        from sop_reporter.config import (
+            AttachmentConfig,
+            EmailConfig,
+            EmailSearchConfig,
+        )
+        from sop_reporter.email_client import GmailIMAPClient
+        from sop_reporter.exceptions import EmailClientError
+
+        class RejectingIMAP:
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            def login(self, *_args):
+                raise imaplib.IMAP4.error(
+                    b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)"
+                )
+
+            def logout(self):
+                return ("BYE", [b""])
+
+        config = EmailConfig(
+            account="a@b.com",
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            mailbox="INBOX",
+            search=EmailSearchConfig(),
+            attachments=AttachmentConfig(),
+        )
+        client = GmailIMAPClient(
+            config, "a@b.com", "badpassword", imap_factory=RejectingIMAP
+        )
+
+        with self.assertRaises(EmailClientError) as caught:
+            client.fetch_messages(Path(tempfile.mkdtemp()))
+
+        # The generic IMAP handler must not strip the meaning off this one.
+        self.assertTrue(caught.exception.authentication_failed)
+        self.assertIn("app password", str(caught.exception))
 
 
 if __name__ == "__main__":
